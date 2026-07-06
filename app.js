@@ -367,6 +367,44 @@ async function renderLore(){
   `).join("");
 }
 
+/* ---------------- Password gate (Submit an Event) ---------------- */
+const GATE_KEY = "midland-meetups-submit-unlocked";
+
+function initGate(){
+  const gate = document.getElementById("gate");
+  const form = document.getElementById("submit-form");
+  if (!gate || !form) return;
+
+  if (sessionStorage.getItem(GATE_KEY) === "true"){
+    gate.style.display = "none";
+    form.style.display = "";
+    return;
+  }
+
+  const input = document.getElementById("gate-password");
+  const button = document.getElementById("gate-submit");
+  const status = document.getElementById("gate-status");
+
+  function tryUnlock(){
+    const value = input.value;
+    if (typeof SUBMIT_PASSWORD === "string" && value === SUBMIT_PASSWORD){
+      sessionStorage.setItem(GATE_KEY, "true");
+      gate.style.display = "none";
+      form.style.display = "";
+    }else{
+      status.textContent = "That's not it — try again.";
+      status.style.color = "var(--red)";
+      input.value = "";
+      input.focus();
+    }
+  }
+
+  button.addEventListener("click", tryUnlock);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter"){ e.preventDefault(); tryUnlock(); }
+  });
+}
+
 /* ---------------- Submit Event form ---------------- */
 function initSubmitForm(){
   const form = document.getElementById("submit-form");
@@ -458,6 +496,7 @@ document.addEventListener("DOMContentLoaded", () => {
   renderWeek();
   initModal();
   renderLore();
+  initGate();
   initSubmitForm();
   initMemoryForm();
 });
