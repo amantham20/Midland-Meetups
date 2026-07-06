@@ -76,7 +76,8 @@ const ICONS = {
   calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>',
   clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>',
   pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s-7-6.5-7-11.5A7 7 0 0 1 19 9.5C19 14.5 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></svg>',
-  host: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c1-4 4-6 7-6s6 2 7 6"/></svg>'
+  host: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c1-4 4-6 7-6s6 2 7 6"/></svg>',
+  link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg>'
 };
 
 function configNotice(where){
@@ -367,6 +368,238 @@ async function renderLore(){
   `).join("");
 }
 
+/* ---------------- The Squad ---------------- */
+async function renderSquad(){
+  const grid = document.getElementById("squad-grid");
+  if (!grid) return;
+
+  if (!isConfigured()){
+    grid.innerHTML = configNotice("Install the backend");
+    return;
+  }
+
+  let members;
+  try{
+    members = await apiGet("getSquad");
+  }catch(err){
+    console.error(err);
+    grid.innerHTML = loadErrorNotice();
+    return;
+  }
+
+  if (members.length === 0){
+    grid.innerHTML = '<p class="empty-note">No profiles yet — be the first to join the squad below.</p>';
+    return;
+  }
+
+  grid.innerHTML = members.map(m => {
+    const initial = String(m.name || "?").trim().charAt(0).toUpperCase();
+    const photo = m.photoUrl
+      ? `<img class="member-photo" src="${escapeHTML(m.photoUrl)}" alt="${escapeHTML(m.name)}" loading="lazy">`
+      : `<div class="member-photo member-photo-fallback">${escapeHTML(initial)}</div>`;
+    const social = m.socialLink
+      ? `<a class="member-social" href="${escapeHTML(m.socialLink)}" target="_blank" rel="noopener noreferrer">${ICONS.link} Follow</a>`
+      : "";
+    const submeta = [m.age, m.gender].filter(Boolean).map(escapeHTML).join(" · ");
+
+    return `
+      <article class="member-card">
+        ${photo}
+        <h3>${escapeHTML(m.name)}</h3>
+        <div class="member-occupation">${escapeHTML(m.occupation)}</div>
+        ${submeta ? `<div class="member-submeta">${submeta}</div>` : ""}
+        <p class="member-bio">${escapeHTML(m.bio)}</p>
+        ${social}
+      </article>
+    `;
+  }).join("");
+}
+
+// Resizes/compresses an image file in the browser before sending it up,
+// so a big phone photo doesn't turn into a huge upload.
+function resizeImageFile(file, maxDim){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read the file."));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Could not read that image."));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim){
+          if (width > height){ height = Math.round(height * (maxDim / width)); width = maxDim; }
+          else { width = Math.round(width * (maxDim / height)); height = maxDim; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+        resolve({ base64: dataUrl.split(",")[1], mimeType: "image/jpeg" });
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function initSquadForm(){
+  const form = document.getElementById("squad-form");
+  if (!form) return;
+  const statusEl = document.getElementById("squad-status");
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    if (!isConfigured()){
+      statusEl.textContent = "This form isn't connected to a Google Sheet yet — see config.js.";
+      statusEl.style.color = "var(--red)";
+      return;
+    }
+
+    const btn = form.querySelector("button[type=submit]");
+    btn.disabled = true;
+    statusEl.textContent = "Sending…";
+    statusEl.style.color = "var(--muted)";
+
+    try{
+      const payload = {
+        action: "submitSquadMember",
+        name: form.name.value.trim(),
+        occupation: form.occupation.value.trim(),
+        age: form.age.value.trim(),
+        gender: form.gender.value.trim(),
+        socialLink: form.socialLink.value.trim(),
+        bio: form.bio.value.trim()
+      };
+
+      const file = form.photo && form.photo.files && form.photo.files[0];
+      if (file){
+        statusEl.textContent = "Preparing photo…";
+        const { base64, mimeType } = await resizeImageFile(file, 640);
+        payload.photoBase64 = base64;
+        payload.photoMimeType = mimeType;
+        statusEl.textContent = "Sending…";
+      }
+
+      await apiPost(payload);
+      form.reset();
+      statusEl.textContent = "Sent! Your profile is in for review and will show up once approved.";
+      statusEl.style.color = "var(--green)";
+    }catch(err){
+      console.error(err);
+      statusEl.textContent = "Something went wrong sending that. Check your connection and try again.";
+      statusEl.style.color = "var(--red)";
+    }finally{
+      btn.disabled = false;
+    }
+  });
+}
+
+/* ---------------- Chat ---------------- */
+let CHAT_POLL_TIMER = null;
+const CHAT_NAME_COLORS = ["#2851E3", "#E5484D", "#B8860B", "#12B76A", "#8B5CF6", "#DB2777"];
+
+function chatColorFor(name){
+  let hash = 0;
+  const str = String(name || "");
+  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  return CHAT_NAME_COLORS[Math.abs(hash) % CHAT_NAME_COLORS.length];
+}
+
+function formatChatTime(iso){
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
+async function renderChat(isPoll){
+  const win = document.getElementById("chat-window");
+  if (!win) return;
+
+  if (!isConfigured()){
+    win.innerHTML = configNotice("Install the backend");
+    return;
+  }
+
+  const wasNearBottom = win.scrollHeight - win.scrollTop - win.clientHeight < 60;
+
+  let messages;
+  try{
+    messages = await apiGet("getChat");
+  }catch(err){
+    console.error(err);
+    if (!isPoll) win.innerHTML = loadErrorNotice();
+    return;
+  }
+
+  if (messages.length === 0){
+    win.innerHTML = '<p class="empty-note">No messages yet — say hi below.</p>';
+    return;
+  }
+
+  win.innerHTML = messages.map(m => `
+    <div class="chat-message">
+      <div class="chat-head">
+        <span class="chat-name" style="color:${chatColorFor(m.name)}">${escapeHTML(m.name)}</span>
+        <span class="chat-time">${formatChatTime(m.timestamp)}</span>
+      </div>
+      <div class="chat-bubble">${escapeHTML(m.message)}</div>
+    </div>
+  `).join("");
+
+  if (!isPoll || wasNearBottom){
+    win.scrollTop = win.scrollHeight;
+  }
+}
+
+function initChat(){
+  const win = document.getElementById("chat-window");
+  if (!win) return;
+  renderChat(false);
+  CHAT_POLL_TIMER = setInterval(() => renderChat(true), 8000);
+  window.addEventListener("beforeunload", () => clearInterval(CHAT_POLL_TIMER));
+}
+
+function initChatForm(){
+  const form = document.getElementById("chat-form");
+  if (!form) return;
+
+  const storedName = getStoredName();
+  if (storedName) form.name.value = storedName;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    if (!isConfigured()){
+      return;
+    }
+
+    const name = form.name.value.trim();
+    const message = form.message.value.trim();
+    if (!name || !message) return;
+
+    setStoredName(name);
+
+    const btn = form.querySelector("button[type=submit]");
+    const msgInput = form.message;
+    btn.disabled = true;
+    msgInput.disabled = true;
+
+    try{
+      await apiPost({ action: "postChatMessage", name, message });
+      msgInput.value = "";
+      await renderChat(false);
+    }catch(err){
+      console.error(err);
+    }finally{
+      btn.disabled = false;
+      msgInput.disabled = false;
+      msgInput.focus();
+    }
+  });
+}
+
 /* ---------------- Password gate (Submit an Event) ---------------- */
 const GATE_KEY = "midland-meetups-submit-unlocked";
 
@@ -496,7 +729,11 @@ document.addEventListener("DOMContentLoaded", () => {
   renderWeek();
   initModal();
   renderLore();
+  renderSquad();
+  initChat();
   initGate();
   initSubmitForm();
   initMemoryForm();
+  initSquadForm();
+  initChatForm();
 });
