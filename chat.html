@@ -36,15 +36,26 @@
     <p class="page-lede">A shared, open chat for the group — no account needed, just a name. Refreshes on its own every few seconds.</p>
   </div>
 
-  <div class="chat-window" id="chat-window">
-    <div class="empty-note">Loading messages…</div>
+  <div class="form-card" id="chat-gate">
+    <div class="form-row">
+      <label for="chat-gate-password">Password</label>
+      <input type="password" id="chat-gate-password" placeholder="Ask the organizer if you don't have it">
+    </div>
+    <button type="button" class="btn" id="chat-gate-submit">Unlock</button>
+    <p class="form-note" id="chat-gate-status"></p>
   </div>
 
-  <form class="chat-form" id="chat-form">
-    <input type="text" name="name" placeholder="Your name" required maxlength="40">
-    <input type="text" name="message" placeholder="Say something…" required maxlength="500" autocomplete="off">
-    <button type="submit" class="btn">Send</button>
-  </form>
+  <div id="chat-content" style="display:none;">
+    <div class="chat-window" id="chat-window">
+      <div class="empty-note">Loading messages…</div>
+    </div>
+
+    <form class="chat-form" id="chat-form">
+      <input type="text" name="name" placeholder="Your name" required maxlength="40">
+      <input type="text" name="message" placeholder="Say something…" required maxlength="500" autocomplete="off">
+      <button type="submit" class="btn">Send</button>
+    </form>
+  </div>
 </main>
 
 <footer class="site-footer">
