@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Squad — Midland Meetups</title>
+<meta name="description" content="Meet the people behind Midland Meetups.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a class="brand" href="index.html">
+      <svg class="mark" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <circle cx="15" cy="16" r="11" fill="#2851E3" opacity="0.9"/>
+        <circle cx="25" cy="16" r="11" fill="#E5484D" opacity="0.85"/>
+        <circle cx="20" cy="25" r="11" fill="#F6B93B" opacity="0.85"/>
+      </svg>
+      <span class="brand-title">Midland Meetups</span>
+    </a>
+    <nav class="main-nav" aria-label="Primary">
+      <a href="index.html">Happenings</a>
+      <a href="lore.html">The Lore Letter</a>
+      <a href="squad.html" class="active">The Squad</a>
+      <a href="chat.html">Chat</a>
+      <a href="submit.html" class="cta">Submit an Event</a>
+    </nav>
+  </div>
+</header>
+
+<main class="page">
+  <div class="page-head">
+    <div class="page-kicker">Who's in it</div>
+    <h1 class="page-title">The Squad</h1>
+    <p class="page-lede">The people who show up. Add yourself below and you'll show up here too, once it's been reviewed.</p>
+  </div>
+
+  <section class="grid" id="squad-grid" aria-label="Squad members">
+    <div class="empty-note">Loading the squad…</div>
+  </section>
+
+  <div class="page-head" style="margin-top:56px;">
+    <div class="page-kicker">New here?</div>
+    <h2 class="page-title" style="font-size: clamp(1.7rem, 3.5vw, 2.2rem);">Join the Squad</h2>
+    <p class="page-lede">Tell us a bit about yourself. A photo helps people recognize you at the next event, but it's optional.</p>
+  </div>
+
+  <form class="form-card" id="squad-form">
+    <div class="form-row">
+      <label for="sq-name">Name</label>
+      <input type="text" id="sq-name" name="name" required placeholder="What should people call you?">
+    </div>
+
+    <div class="form-row two-col">
+      <div>
+        <label for="sq-occupation">Occupation</label>
+        <input type="text" id="sq-occupation" name="occupation" required placeholder="What do you do?">
+      </div>
+      <div>
+        <label for="sq-age">Age</label>
+        <input type="number" id="sq-age" name="age" required min="1" max="120" placeholder="e.g. 29">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <label for="sq-gender">Gender <span class="hint">— however you'd like it shown</span></label>
+      <input type="text" id="sq-gender" name="gender" required placeholder="e.g. she/her, he/him, they/them">
+    </div>
+
+    <div class="form-row">
+      <label for="sq-social">Social media link</label>
+      <input type="url" id="sq-social" name="socialLink" required placeholder="https://instagram.com/yourname">
+    </div>
+
+    <div class="form-row">
+      <label for="sq-bio">Bio</label>
+      <textarea id="sq-bio" name="bio" required placeholder="A sentence or two about you — what brings you around, what you're into."></textarea>
+    </div>
+
+    <div class="form-row">
+      <label for="sq-photo">Photo <span class="hint">— optional</span></label>
+      <div class="file-input-wrap">
+        <input type="file" id="sq-photo" name="photo" accept="image/*">
+      </div>
+    </div>
+
+    <button type="submit" class="btn">Send Profile</button>
+    <p class="form-note" id="squad-status">This goes straight into the Sheet for review — it'll show up above once approved.</p>
+  </form>
+</main>
+
+<footer class="site-footer">
+  Midland Meetups &middot; a bulletin board for the crew &middot; Midland, MI
+</footer>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
