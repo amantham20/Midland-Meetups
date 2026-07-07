@@ -397,6 +397,91 @@ function renderCardsOnly(){
   });
 }
 
+/* ---------------- RSVPs directory page ---------------- */
+function rsvpNamesListHTML(names, emptyLabel){
+  if (names.length === 0){
+    return `<ul class="rsvp-names empty"><li>${escapeHTML(emptyLabel)}</li></ul>`;
+  }
+  return `<ul class="rsvp-names">${names.map(n => `<li>${escapeHTML(n)}</li>`).join("")}</ul>`;
+}
+
+function eventRsvpCardHTML(evt, rsvps){
+  const rows = rsvps.filter(r => r.eventId === evt.id);
+  const going = rows.filter(r => r.status === "going").map(r => r.name);
+  const notGoing = rows.filter(r => r.status === "not-going").map(r => r.name);
+
+  return `
+    <div class="rsvp-event-card">
+      <div class="rsvp-event-head">
+        <div>
+          <h3>${escapeHTML(evt.title)}</h3>
+          <div class="card-meta">
+            <span>${ICONS.calendar} ${formatDateShort(evt.date)}</span>
+            <span>${ICONS.clock} ${escapeHTML(evt.time)}</span>
+          </div>
+        </div>
+        ${evt.status !== "confirmed" ? `<span class="pill ${evt.status}">${STATUS_LABEL[evt.status] || evt.status}</span>` : ""}
+      </div>
+      <div class="rsvp-columns">
+        <div class="rsvp-column going">
+          <h4>Going (${going.length})</h4>
+          ${rsvpNamesListHTML(going, "No one yet")}
+        </div>
+        <div class="rsvp-column not-going">
+          <h4>Can't make it (${notGoing.length})</h4>
+          ${rsvpNamesListHTML(notGoing, "No one yet")}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function renderRsvpsPage(){
+  const container = document.getElementById("rsvps-list");
+  if (!container) return;
+
+  if (!isConfigured()){
+    container.innerHTML = configNotice("Install the backend");
+    return;
+  }
+
+  let events, rsvps;
+  try{
+    [events, rsvps] = await Promise.all([apiGet("getEvents"), apiGet("getRsvps")]);
+  }catch(err){
+    console.error(err);
+    container.innerHTML = loadErrorNotice();
+    return;
+  }
+
+  if (events.length === 0){
+    container.innerHTML = '<p class="empty-note">No events yet.</p>';
+    return;
+  }
+
+  const todayStr = (() => {
+    const d = new Date();
+    d.setHours(0,0,0,0);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  })();
+
+  const upcoming = events.filter(e => String(e.date) >= todayStr).sort((a,b) => String(a.date).localeCompare(String(b.date)));
+  const past = events.filter(e => String(e.date) < todayStr).sort((a,b) => String(b.date).localeCompare(String(a.date)));
+
+  let html = "";
+  html += `<h2 class="rsvp-section-title">Upcoming</h2>`;
+  html += upcoming.length
+    ? upcoming.map(evt => eventRsvpCardHTML(evt, rsvps)).join("")
+    : '<p class="empty-note">Nothing upcoming.</p>';
+
+  if (past.length){
+    html += `<h2 class="rsvp-section-title">Past</h2>`;
+    html += past.map(evt => eventRsvpCardHTML(evt, rsvps)).join("");
+  }
+
+  container.innerHTML = html;
+}
+
 /* ---------------- Lore Letter ---------------- */
 async function renderLore(){
   const feed = document.getElementById("lore-feed");
@@ -835,6 +920,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initModal();
   renderLore();
   renderSquad();
+  renderRsvpsPage();
   initChatGate();
   initGate();
   initSubmitForm();
