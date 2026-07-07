@@ -475,6 +475,12 @@ function initSquadForm(){
 
       const file = form.photo && form.photo.files && form.photo.files[0];
       if (file){
+        if (file.type !== "image/jpeg" && file.type !== "image/png"){
+          statusEl.textContent = "That photo needs to be a JPG or PNG — try a different file.";
+          statusEl.style.color = "var(--red)";
+          btn.disabled = false;
+          return;
+        }
         statusEl.textContent = "Preparing photo…";
         const { base64, mimeType } = await resizeImageFile(file, 640);
         payload.photoBase64 = base64;
@@ -600,30 +606,38 @@ function initChatForm(){
   });
 }
 
-/* ---------------- Password gate (Submit an Event) ---------------- */
+/* ---------------- Password gates (Submit an Event, Chat) ---------------- */
 const GATE_KEY = "midland-meetups-submit-unlocked";
+const CHAT_GATE_KEY = "midland-meetups-chat-unlocked";
 
-function initGate(){
-  const gate = document.getElementById("gate");
-  const form = document.getElementById("submit-form");
-  if (!gate || !form) return;
+// Generic gate: shows a password box, hides `contentId` until the right
+// password is entered (or it was already unlocked earlier this tab session).
+function createPasswordGate(opts){
+  const { gateId, contentId, password, storageKey, inputId, buttonId, statusId, onUnlock } = opts;
+  const gate = document.getElementById(gateId);
+  const content = document.getElementById(contentId);
+  if (!gate || !content) return;
 
-  if (sessionStorage.getItem(GATE_KEY) === "true"){
+  function unlock(){
     gate.style.display = "none";
-    form.style.display = "";
+    content.style.display = "";
+    if (typeof onUnlock === "function") onUnlock();
+  }
+
+  if (sessionStorage.getItem(storageKey) === "true"){
+    unlock();
     return;
   }
 
-  const input = document.getElementById("gate-password");
-  const button = document.getElementById("gate-submit");
-  const status = document.getElementById("gate-status");
+  const input = document.getElementById(inputId);
+  const button = document.getElementById(buttonId);
+  const status = document.getElementById(statusId);
 
   function tryUnlock(){
     const value = input.value;
-    if (typeof SUBMIT_PASSWORD === "string" && value === SUBMIT_PASSWORD){
-      sessionStorage.setItem(GATE_KEY, "true");
-      gate.style.display = "none";
-      form.style.display = "";
+    if (typeof password === "string" && value === password){
+      sessionStorage.setItem(storageKey, "true");
+      unlock();
     }else{
       status.textContent = "That's not it — try again.";
       status.style.color = "var(--red)";
@@ -635,6 +649,31 @@ function initGate(){
   button.addEventListener("click", tryUnlock);
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter"){ e.preventDefault(); tryUnlock(); }
+  });
+}
+
+function initGate(){
+  createPasswordGate({
+    gateId: "gate",
+    contentId: "submit-form",
+    password: typeof SUBMIT_PASSWORD === "string" ? SUBMIT_PASSWORD : null,
+    storageKey: GATE_KEY,
+    inputId: "gate-password",
+    buttonId: "gate-submit",
+    statusId: "gate-status"
+  });
+}
+
+function initChatGate(){
+  createPasswordGate({
+    gateId: "chat-gate",
+    contentId: "chat-content",
+    password: typeof CHAT_PASSWORD === "string" ? CHAT_PASSWORD : null,
+    storageKey: CHAT_GATE_KEY,
+    inputId: "chat-gate-password",
+    buttonId: "chat-gate-submit",
+    statusId: "chat-gate-status",
+    onUnlock: () => { initChat(); initChatForm(); }
   });
 }
 
@@ -730,10 +769,9 @@ document.addEventListener("DOMContentLoaded", () => {
   initModal();
   renderLore();
   renderSquad();
-  initChat();
+  initChatGate();
   initGate();
   initSubmitForm();
   initMemoryForm();
   initSquadForm();
-  initChatForm();
 });
