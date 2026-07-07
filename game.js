@@ -83,6 +83,9 @@
 
   const WIZARD_DEFEAT_BONUS = 25; // score bonus for hitting a wizard
 
+  const LOCAL_BEST_KEY = "midland-meetups-ww-best-score";
+  const UNSAVED_SCORE_WARN_THRESHOLD = 15; // don't nag over near-zero runs
+
   const DEBUG = true; // logs key game events to the browser console — flip to false once you're done troubleshooting
   /* ==================== end config ==================== */
 
@@ -105,6 +108,19 @@
     lastPowerupScore = 0;
     running = false;
     over = false;
+  }
+
+  /* ---------------- local best score (kept even if never saved to the Sheet) ---------------- */
+  function getLocalBest(){
+    return Number(localStorage.getItem(LOCAL_BEST_KEY)) || 0;
+  }
+  function setLocalBestIfHigher(candidateScore){
+    const current = getLocalBest();
+    if (candidateScore > current){
+      localStorage.setItem(LOCAL_BEST_KEY, String(candidateScore));
+      return true;
+    }
+    return false;
   }
 
   function rectsOverlap(x1,y1,w1,h1,x2,y2,w2,h2){
@@ -512,9 +528,11 @@
 
   function showStartOverlay(){
     overlay.style.display = "flex";
+    const localBest = getLocalBest();
     overlayInner.innerHTML = `
       <h3>Wizards &amp; Waffles</h3>
       <p>Left tap / Up arrow to jump. Right tap / Space to throw. Dodge or defeat the wizards — grab power-ups when you see them.</p>
+      ${localBest > 0 ? `<p style="font-size:0.82rem;opacity:0.85;">Your best so far: ${localBest}</p>` : ""}
       <button type="button" class="btn" id="game-play-btn">Play</button>
     `;
     document.getElementById("game-play-btn").addEventListener("click", startGame);
@@ -522,11 +540,16 @@
 
   function showGameOverOverlay(){
     const finalScore = Math.floor(score);
+    const isNewLocalBest = setLocalBestIfHigher(finalScore);
+    const localBest = getLocalBest();
+    let scoreSaved = false;
+
     overlay.style.display = "flex";
     const storedName = (typeof getStoredName === "function" ? getStoredName() : "") || "";
     overlayInner.innerHTML = `
       <h3>Game Over</h3>
-      <p>Score: ${finalScore}</p>
+      <p>Score: ${finalScore}${isNewLocalBest ? " — new personal best!" : ""}</p>
+      <p style="font-size:0.78rem;opacity:0.8;margin-top:-10px;">Your best: ${localBest}</p>
       <div class="form-row">
         <input type="text" id="game-name" placeholder="Your name" maxlength="40" value="${typeof escapeHTML === "function" ? escapeHTML(storedName) : storedName}">
       </div>
@@ -561,6 +584,7 @@
 
       try{
         await apiPost({ action: "submitScore", name, score: finalScore });
+        scoreSaved = true;
         statusEl.textContent = "Saved! Check the leaderboard above.";
         statusEl.style.color = "var(--green)";
         renderLeaderboard();
@@ -573,7 +597,16 @@
       }
     });
 
-    document.getElementById("game-again-btn").addEventListener("click", startGame);
+    document.getElementById("game-again-btn").addEventListener("click", () => {
+      const worthSaving = isConfigured() && finalScore >= UNSAVED_SCORE_WARN_THRESHOLD;
+      if (worthSaving && !scoreSaved){
+        const proceed = window.confirm(
+          `You haven't saved this score (${finalScore}) to the leaderboard yet. Play again without saving it?`
+        );
+        if (!proceed) return;
+      }
+      startGame();
+    });
   }
 
   /* ---------------- leaderboard ---------------- */
