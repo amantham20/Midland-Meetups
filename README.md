@@ -93,6 +93,10 @@ and the site is deployed (see below), it should be pulling live data.
   profiles submitted through "Join the Squad" arrive as `FALSE` for review.
 - **RSVPs tab:** one row per person per event — fills in automatically as
   people RSVP on the site. You generally won't need to touch it.
+- **Scores tab:** columns are `id`, `name`, `score`, `timestamp` — powers
+  the Wizards &amp; Waffles leaderboard. Only each person's *best* score is kept
+  (one row per name); a new run only overwrites their row if it beats
+  their previous best. No approval step, same reasoning as Chat.
 - **Chat tab:** columns are `id`, `name`, `message`, `timestamp`. Messages
   post immediately with no approval step (a review queue would defeat the
   point of a live chat). The page polls for new messages every 8 seconds.
@@ -202,14 +206,86 @@ normal-looking date/time before sending them to the site. If you're
 seeing this, you're likely running an older deployment — run `setup()`
 again (safe, won't touch existing data) and push a new deployment version.
 
+## How Wizards & Waffles works
+
+`game.html` is a small canvas-based arcade shooter (mid-century modern
+style — bold primary colors, simple flat shapes) built from scratch in
+`game.js`, no external game library. You run right automatically; jump
+obstacles and wizards, or throw waffles to defeat wizards outright.
+Grab the motorcycle power-up for 10 seconds of invincibility, or the
+jetpack to hover above ground threats and throw arcing muffins instead.
+The board gets faster the longer you survive.
+
+**Controls:** Up arrow to jump, Space to throw. On touch devices, tap the
+left half of the game to jump, the right half to throw.
+
+**This is entirely self-contained and safe to experiment with** — every
+tunable number (enemy spawn rate, projectile speed, power-up duration,
+wizard-to-obstacle ratio, colors, everything) lives in a `CONFIG` block
+at the top of `game.js`. Changing how the game looks or plays never
+touches the Apps Script backend or the Sheet; the only thing that talks
+to the backend is saving a score, which is a fixed `{name, score}` shape
+regardless of what the game does above it. Edit `game.js`, re-upload it,
+done — no redeployment, no new Sheet columns, nothing on the backend
+side to keep in sync.
+
+The **High Scores** leaderboard sits above the game and shows the top 10
+scores from the `Scores` tab, refreshing automatically every 20 seconds
+and immediately after anyone saves a new score. It only keeps each
+person's best run, so the board stays a clean "who's the best" list
+rather than a log of every game ever played. Same name-remembering trick
+as RSVPs and Chat — it'll pre-fill whatever name you've used before on
+that device.
+
+`game.js` is its own file, loaded only on `game.html`, so it doesn't add
+any weight to the rest of the site.
+
+## Adding a new page (or renaming/reordering nav links)
+
+The nav links are shared across every page from one file: **`nav.html`**.
+It's just a plain list of links — no HTML boilerplate, no header, nothing
+page-specific:
+
+```html
+<a href="index.html" data-page="index">Happenings</a>
+<a href="rsvps.html" data-page="rsvps">RSVPs</a>
+...
+```
+
+Each page fetches this file at load time and drops it into its (otherwise
+empty) `<nav id="main-nav">` element — that's the only place nav links
+live. To add, rename, reorder, or remove a link, edit `nav.html` once;
+every page picks up the change automatically, no need to touch the other
+HTML files.
+
+To add a brand-new page:
+1. Create the new `.html` file (easiest: copy an existing simple page like
+   `lore.html` and swap out the `<main>` content).
+2. Give its `<body>` tag a `data-page="something"` attribute — a short
+   unique key for that page (e.g. `data-page="events-archive"`).
+3. Add a matching link to `nav.html`:
+   `<a href="your-page.html" data-page="something">Your Page</a>`
+
+The `data-page` value just needs to match between the page's `<body>` tag
+and its link in `nav.html` — that's what tells the site which nav link to
+highlight as "active" on that page. If you skip step 2, the page still
+works fine, it just won't highlight anything in the nav.
+
+**Note on local testing:** since this uses `fetch()` to load `nav.html`,
+opening a page by double-clicking the file (a `file://` URL) won't load
+the nav — browsers block that kind of local file fetch for security
+reasons. It works fine once uploaded to GitHub Pages (or if you run a
+local server, e.g. `python3 -m http.server`, and open the page through
+that instead).
+
 ## Putting the website on GitHub Pages
 
 1. Create a new repository on GitHub (public repos get free Pages hosting).
 2. Upload the website files — `index.html`, `rsvps.html`, `lore.html`,
-   `submit.html`, `squad.html`, `chat.html`, `style.css`, `app.js`,
-   `config.js` (with your URL already pasted in). You don't need to
-   upload the `apps-script` folder; that code lives in the Sheet's Apps
-   Script editor, not on GitHub.
+   `submit.html`, `squad.html`, `chat.html`, `game.html`, `nav.html`,
+   `style.css`, `app.js`, `game.js`, `config.js` (with your URL already
+   pasted in). You don't need to upload the `apps-script` folder; that
+   code lives in the Sheet's Apps Script editor, not on GitHub.
 3. In the repo, go to **Settings → Pages**.
 4. Under "Build and deployment," set **Source** to "Deploy from a branch,"
    pick the `main` branch and the `/ (root)` folder, then **Save**.
