@@ -70,6 +70,7 @@ button{ font-family: inherit; }
   display:flex;
   align-items:center;
   gap:16px;
+  position: relative;
 }
 .brand{
   display:flex;
@@ -115,10 +116,54 @@ button{ font-family: inherit; }
 }
 .main-nav a.cta:hover{ background: var(--blue-ink); }
 
-@media (max-width: 640px){
-  .header-inner{ flex-wrap: wrap; }
-  .main-nav{ width:100%; justify-content: space-between; }
-  .main-nav a{ font-size: 0.82rem; padding: 7px 10px; }
+.nav-toggle{
+  display:none;
+  align-items:center;
+  justify-content:center;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  flex-shrink: 0;
+  color: var(--ink);
+}
+.nav-toggle:hover{ background: var(--surface-2); }
+.nav-toggle svg{ width: 20px; height: 20px; }
+.nav-toggle .icon-close{ display: none; }
+.nav-toggle.open .icon-menu{ display: none; }
+.nav-toggle.open .icon-close{ display: block; }
+
+@media (max-width: 760px){
+  .nav-toggle{ display: flex; }
+
+  .main-nav{
+    display: none;
+    position: absolute;
+    top: calc(100% + 1px);
+    left: 0;
+    right: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: none;
+    box-shadow: var(--shadow-md);
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 14px 16px;
+    border-radius: 0 0 var(--r-md) var(--r-md);
+  }
+  .main-nav.open{ display: flex; }
+  .main-nav a{
+    width: 100%;
+    padding: 13px 14px;
+    border-radius: var(--r-sm);
+    font-size: 1rem;
+  }
+  .main-nav a.cta{
+    margin-top: 8px;
+    text-align: center;
+  }
 }
 
 /* -------------------- Ticker (updates banner) -------------------- */
