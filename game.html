@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Wizards & Waffles — Midland Meetups</title>
-<meta name="description" content="An arcade shooter with a shared high score board. Throw waffles at wizards.">
+<title>Games — Midland Meetups</title>
+<meta name="description" content="Wizards & Waffles and Walter vs. Wizards — two arcade games with a shared high score board.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body data-page="game">
@@ -30,23 +30,33 @@
 <main class="page">
   <div class="page-head">
     <div class="page-kicker">Kill some time</div>
-    <h1 class="page-title">Wizards &amp; Waffles</h1>
-    <p class="page-lede">An arcade shooter with a shared leaderboard. Dodge or defeat the wizards, grab power-ups, beat your name onto the board.</p>
+    <h1 class="page-title">Games</h1>
+    <p class="page-lede">Two arcade games, both built for this site. Wizards &amp; Waffles first — Walter vs. Wizards below it.</p>
   </div>
 
-  <h2 class="rsvp-section-title" style="margin-top:0;">High Scores</h2>
+  <h2 class="rsvp-section-title" style="margin-top:0;">Wizards &amp; Waffles — High Scores</h2>
   <ul class="leaderboard-list" id="leaderboard-list">
     <li class="empty-note">Loading scores…</li>
   </ul>
 
-  <h2 class="rsvp-section-title">Play</h2>
+  <h2 class="rsvp-section-title">Wizards &amp; Waffles</h2>
   <div class="game-wrap">
-    <canvas id="game-canvas" width="640" height="220" tabindex="0"></canvas>
+    <canvas id="game-canvas" width="640" height="360" tabindex="0"></canvas>
     <div class="game-overlay" id="game-overlay">
       <div class="game-overlay-inner" id="game-overlay-inner"></div>
     </div>
   </div>
   <p class="game-instructions">Up arrow to jump, Space to throw — or tap the left half of the game to jump, right half to throw.</p>
+
+  <h2 class="rsvp-section-title" style="margin-top:56px;">Walter vs. Wizards</h2>
+  <p class="page-lede" style="margin-bottom:20px;">A wave-based brawler. Fight through the castle wall and fair grounds, bank crystals from defeated wizards in the tower chest, and spend them at the altar to unlock spells.</p>
+  <div class="game-wrap">
+    <canvas id="walter-canvas" width="640" height="360" tabindex="0"></canvas>
+    <div class="game-overlay" id="walter-overlay">
+      <div class="game-overlay-inner" id="walter-overlay-inner"></div>
+    </div>
+  </div>
+  <p class="game-instructions">Arrow keys to move, Up to jump or climb the tower ladder, Space to sword-strike or cast your active spell, number keys 1–5 to switch spells once unlocked.</p>
 </main>
 
 <footer class="site-footer">
@@ -56,5 +66,6 @@
 <script src="config.js"></script>
 <script src="app.js"></script>
 <script src="game.js"></script>
+<script src="walter.js"></script>
 </body>
 </html>
