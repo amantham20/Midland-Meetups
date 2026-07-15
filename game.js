@@ -19,8 +19,8 @@
 
   /* ==================== CONFIG — tweak freely ==================== */
   const CANVAS_W = 640;
-  const CANVAS_H = 220;
-  const GROUND_Y = 185;
+  const CANVAS_H = 360;
+  const GROUND_Y = 300;
 
   const COLORS = {
     bg: "#F5F0E6",            // warm cream backdrop
@@ -84,7 +84,6 @@
   const WIZARD_DEFEAT_BONUS = 25; // score bonus for hitting a wizard
 
   const LOCAL_BEST_KEY = "midland-meetups-ww-best-score";
-  const UNSAVED_SCORE_WARN_THRESHOLD = 15; // don't nag over near-zero runs
 
   const DEBUG = true; // logs key game events to the browser console — flip to false once you're done troubleshooting
   /* ==================== end config ==================== */
@@ -542,7 +541,6 @@
     const finalScore = Math.floor(score);
     const isNewLocalBest = setLocalBestIfHigher(finalScore);
     const localBest = getLocalBest();
-    let scoreSaved = false;
 
     overlay.style.display = "flex";
     const storedName = (typeof getStoredName === "function" ? getStoredName() : "") || "";
@@ -584,7 +582,6 @@
 
       try{
         await apiPost({ action: "submitScore", name, score: finalScore });
-        scoreSaved = true;
         statusEl.textContent = "Saved! Check the leaderboard above.";
         statusEl.style.color = "var(--green)";
         renderLeaderboard();
@@ -597,16 +594,7 @@
       }
     });
 
-    document.getElementById("game-again-btn").addEventListener("click", () => {
-      const worthSaving = isConfigured() && finalScore >= UNSAVED_SCORE_WARN_THRESHOLD;
-      if (worthSaving && !scoreSaved){
-        const proceed = window.confirm(
-          `You haven't saved this score (${finalScore}) to the leaderboard yet. Play again without saving it?`
-        );
-        if (!proceed) return;
-      }
-      startGame();
-    });
+    document.getElementById("game-again-btn").addEventListener("click", startGame);
   }
 
   /* ---------------- leaderboard ---------------- */
@@ -663,13 +651,15 @@
     draw();
     showStartOverlay();
 
-    canvas.addEventListener("click", (e) => handlePointer(e.clientX));
+    canvas.addEventListener("click", (e) => { canvas.focus(); handlePointer(e.clientX); });
     canvas.addEventListener("touchstart", (e) => {
       e.preventDefault();
+      canvas.focus();
       handlePointer(e.touches[0].clientX);
     }, { passive: false });
 
     document.addEventListener("keydown", (e) => {
+      if (document.activeElement !== canvas) return; // don't steal input meant for another game on this page
       if (e.code === "ArrowUp" || e.code === "KeyW"){
         e.preventDefault();
         jump();
