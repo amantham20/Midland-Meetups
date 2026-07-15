@@ -22,8 +22,8 @@
 
   /* ==================== CONFIG ==================== */
   const CANVAS_W = 640;
-  const CANVAS_H = 360;
-  const GROUND_Y = 300;
+  const CANVAS_H = 460;
+  const GROUND_Y = 400;
 
   const COLORS = {
     skyTower: "#EDE6D6",
@@ -53,7 +53,10 @@
     ally: "#F6A93B",
     hud: "#1F2430",
     hpGood: "#12B76A",
-    hpBad: "#E14B3C"
+    hpBad: "#E14B3C",
+    armor: "#9CA3AF",
+    armorBg: "#4B5563",
+    silver: "#8A94A6"
   };
 
   // World zones, left to right
@@ -81,11 +84,11 @@
   const HIT_INVULN_FRAMES = 30;
 
   const MELEE_RANGE = 34;
-  const MELEE_DAMAGE = 18;
+  const MELEE_DAMAGE = 30; // was 18 — now a one-shot against knights/archers/wizards
   const MELEE_COOLDOWN = 22;
 
   const ENEMY_STATS = {
-    knight:  { hp: 30, speed: 1.4, damage: 8,  attackCooldown: 50, contactRange: 30, w: 26, h: 40 },
+    knight:  { hp: 30, speed: 1.4, damage: 8,  attackCooldown: 50, contactRange: 30, w: 26, h: 40, dropsSilver: true },
     archer:  { hp: 22, speed: 1.1, damage: 10, attackCooldown: 80, preferredRange: 220, projectileSpeed: 6,   w: 24, h: 38 },
     wizard:  { hp: 26, speed: 1.0, damage: 14, attackCooldown: 90, preferredRange: 260, projectileSpeed: 6.5, w: 26, h: 40, dropsCrystal: true }
   };
@@ -95,6 +98,7 @@
   const RATIO_SHIFT_KILLS = 60; // kills to fully shift from 90/5/5 toward 40/30/30
 
   const CRYSTAL_PER_WIZARD = 1;
+  const SILVER_PER_KNIGHT = 1;
 
   const SPELLS = {
     fireball:    { label: "Fireball",     cost: 10, damage: 20, speed: 8,   cooldown: 30 },
@@ -104,6 +108,15 @@
     blackHole:   { label: "Black Hole",   cost: 10, radius: 100, duration: 180, damagePerFrame: 0.3, pullStrength: 0.6, cooldown: 360 }
   };
   const SPELL_ORDER = ["fireball", "lightning", "freeze", "summonAlly", "blackHole"];
+
+  // Armor is a consumable HP buffer bought with silver (from knights), separate
+  // from the crystal/spell economy. Damage drains armor before Walter's own HP.
+  // Buying a new piece replaces whatever's left of the current one.
+  const ARMOR = {
+    leather: { label: "Leather Armor", cost: 5,  multiplier: 1.5 },
+    steel:   { label: "Steel Armor",   cost: 10, multiplier: 2 }
+  };
+  const ARMOR_ORDER = ["leather", "steel"];
 
   const DEBUG = true; // logs key events to the console — flip to false once things look right
   /* ==================== end config ==================== */
@@ -143,6 +156,17 @@
     return player.carriedCrystals + player.bankedCrystals;
   }
 
+  function buyArmor(key){
+    const cfg = ARMOR[key];
+    if (!cfg || player.silver < cfg.cost) return false;
+    player.silver -= cfg.cost;
+    player.armorType = key;
+    player.armorMaxHp = Math.round(PLAYER_MAX_HP * cfg.multiplier);
+    player.armorHp = player.armorMaxHp; // replaces whatever armor was left, if any
+    if (DEBUG) console.log("[WvW] bought " + key + " armor, armorHp=" + player.armorHp);
+    return true;
+  }
+
   function spendCrystals(cost){
     let remaining = cost;
     const fromCarried = Math.min(player.carriedCrystals, remaining);
@@ -156,7 +180,8 @@
     player = {
       x: TOWER_X, y: GROUND_Y - PLAYER_H, vy: 0, onGround: true, onLadder: false,
       facing: 1, hp: PLAYER_MAX_HP,
-      carriedCrystals: 0, bankedCrystals: 0,
+      carriedCrystals: 0, bankedCrystals: 0, silver: 0,
+      armorType: null, armorHp: 0, armorMaxHp: 0,
       invulnFrames: RESPAWN_INVULN_FRAMES
     };
     enemies = [];
@@ -349,12 +374,29 @@
         player.carriedCrystals += CRYSTAL_PER_WIZARD;
         if (DEBUG) console.log("[WvW] wizard defeated, crystal carried=" + player.carriedCrystals);
       }
+      if (ENEMY_STATS[en.type].dropsSilver){
+        player.silver += SILVER_PER_KNIGHT;
+        if (DEBUG) console.log("[WvW] knight defeated, silver=" + player.silver);
+      }
     }
   }
 
   function damagePlayer(amount){
     if (player.invulnFrames > 0) return;
-    player.hp -= amount;
+
+    let remaining = amount;
+    if (player.armorHp > 0){
+      const absorbed = Math.min(player.armorHp, remaining);
+      player.armorHp -= absorbed;
+      remaining -= absorbed;
+      if (player.armorHp <= 0){
+        player.armorHp = 0;
+        if (DEBUG) console.log("[WvW] " + player.armorType + " armor depleted and consumed");
+        player.armorType = null;
+      }
+    }
+    if (remaining > 0) player.hp -= remaining;
+
     player.invulnFrames = HIT_INVULN_FRAMES;
     if (player.hp <= 0) respawnPlayer();
   }
@@ -741,12 +783,25 @@
     ctx.lineWidth = 1.5;
     ctx.strokeRect(12, 12, 120, 12);
 
+    if (player.armorType){
+      ctx.fillStyle = COLORS.armorBg;
+      ctx.fillRect(12, 27, 120, 7);
+      ctx.fillStyle = COLORS.armor;
+      ctx.fillRect(12, 27, 120 * Math.max(0, player.armorHp / player.armorMaxHp), 7);
+      ctx.strokeStyle = COLORS.hud;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(12, 27, 120, 7);
+    }
+
     ctx.fillStyle = COLORS.hud;
     ctx.font = "700 13px 'JetBrains Mono', monospace";
     ctx.textAlign = "left";
-    ctx.fillText("Crystals: " + player.carriedCrystals + " carried / " + player.bankedCrystals + " banked", 12, 42);
+    ctx.fillText("Crystals: " + player.carriedCrystals + " carried / " + player.bankedCrystals + " banked", 12, 52);
+    ctx.fillStyle = COLORS.silver;
+    ctx.fillText("Silver: " + player.silver, 12, 68);
 
     ctx.textAlign = "right";
+    ctx.fillStyle = COLORS.hud;
     ctx.fillText(activeSpell ? SPELLS[activeSpell].label.toUpperCase() : "SWORD", CANVAS_W - 12, 24);
   }
 
@@ -806,7 +861,7 @@
 
   function renderAltar(){
     const total = totalCrystals();
-    const rows = SPELL_ORDER.map((key, i) => {
+    const spellRows = SPELL_ORDER.map((key, i) => {
       const cfg = SPELLS[key];
       const owned = spellUnlocked.has(key);
       const affordable = total >= cfg.cost;
@@ -821,10 +876,29 @@
       `;
     }).join("");
 
+    const armorRows = ARMOR_ORDER.map(key => {
+      const cfg = ARMOR[key];
+      const equipped = player.armorType === key;
+      const affordable = player.silver >= cfg.cost;
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.15);">
+          <span>${cfg.label}${equipped ? " (equipped)" : ""}</span>
+          <button type="button" class="btn light" style="padding:6px 12px;font-size:0.8rem;" data-armor="${key}" ${affordable ? "" : "disabled"}>Buy (${cfg.cost} silver)</button>
+        </div>
+      `;
+    }).join("");
+
+    const armorStatus = player.armorType
+      ? `${ARMOR[player.armorType].label}: ${Math.ceil(player.armorHp)}/${player.armorMaxHp}`
+      : "No armor equipped";
+
     overlayInner.innerHTML = `
       <h3>Wizard Skill Altar</h3>
-      <p>You have ${total} crystal${total === 1 ? "" : "s"} to spend (carried + banked).</p>
-      <div style="text-align:left;">${rows}</div>
+      <p>You have ${total} crystal${total === 1 ? "" : "s"} to spend on spells (carried + banked), and ${player.silver} silver for armor.</p>
+      <p style="font-size:0.82rem;opacity:0.85;margin-top:-8px;">${armorStatus}</p>
+      <div style="text-align:left;">${spellRows}</div>
+      <p style="font-weight:700;margin:14px 0 4px;">Armor (buying replaces your current piece)</p>
+      <div style="text-align:left;">${armorRows}</div>
       <button type="button" class="btn light" id="wvw-altar-close" style="margin-top:14px;">Close</button>
     `;
 
@@ -838,6 +912,11 @@
           if (DEBUG) console.log("[WvW] unlocked spell " + key);
           renderAltar();
         }
+      });
+    });
+    overlayInner.querySelectorAll("button[data-armor]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        if (buyArmor(btn.dataset.armor)) renderAltar();
       });
     });
     document.getElementById("wvw-altar-close").addEventListener("click", closeAltar);
