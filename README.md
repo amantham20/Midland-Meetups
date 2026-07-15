@@ -19,8 +19,9 @@ Your Google Sheet  <---->  Apps Script Web App  <---->  This website (GitHub Pag
   (the database)         (the API in between)          (what people see/use)
 ```
 
-- **The Sheet** has five tabs: `Events`, `Memories`, `RSVPs`, `Squad`,
-  `Chat`. You can look at and hand-edit any of it any time.
+- **The Sheet** has seven tabs: `Events`, `Memories`, `RSVPs`, `Squad`,
+  `Chat`, `Scores`, `WalterProgress`. You can look at and hand-edit any
+  of it any time.
 - **The Apps Script** (`apps-script/Code.gs`) is code that lives *inside*
   that Sheet (via Extensions → Apps Script) and exposes it to the website
   through a URL. It also emails you when something needs review, and
@@ -44,9 +45,10 @@ Your Google Sheet  <---->  Apps Script Web App  <---->  This website (GitHub Pag
    **Go to [project name] (unsafe)**, then **Allow**. (This warning shows
    up for any script you write yourself — it's just Google being cautious
    about scripts that touch your Sheets, Drive, and Gmail.)
-7. Go back to the Sheet tab — you should now see five tabs at the bottom:
-   `Events`, `Memories`, `RSVPs`, `Squad`, `Chat`, with headers and a
-   couple of sample rows marked "(sample — delete me)".
+7. Go back to the Sheet tab — you should now see seven tabs at the bottom:
+   `Events`, `Memories`, `RSVPs`, `Squad`, `Chat`, `Scores`,
+   `WalterProgress`, with headers and a couple of sample rows marked
+   "(sample — delete me)".
 8. Back in the Apps Script editor: **Deploy → New deployment**.
 9. Click the gear icon next to "Select type" and choose **Web app**.
 10. Set **Execute as** to "Me" and **Who has access** to **"Anyone"** —
@@ -97,6 +99,8 @@ and the site is deployed (see below), it should be pulling live data.
   the Wizards &amp; Waffles leaderboard. Only each person's *best* score is kept
   (one row per name); a new run only overwrites their row if it beats
   their previous best. No approval step, same reasoning as Chat.
+- **WalterProgress tab:** columns are `name`, `password`, `progress`,
+  `updatedAt` — powers Walter vs. Wizards' save system (see below).
 - **Chat tab:** columns are `id`, `name`, `message`, `timestamp`. Messages
   post immediately with no approval step (a review queue would defeat the
   point of a live chat). The page polls for new messages every 8 seconds.
@@ -240,6 +244,88 @@ that device.
 `game.js` is its own file, loaded only on `game.html`, so it doesn't add
 any weight to the rest of the site.
 
+## How Walter vs. Wizards works
+
+A second, more complex game living on the same page as Wizards & Waffles
+(both load from `game.html`), built in its own file, `walter.js`. It's a
+wave-based brawler rather than an endless runner:
+
+- **Move and fight:** arrow keys to move, Up to jump (or to climb the
+  tower's ladder), Space to swing your sword or cast whatever spell is
+  currently active, number keys 1–5 to switch spells once you've
+  unlocked them.
+- **Three connected areas, left to right:** the **Tower** (a safe hub —
+  climb it to reach the **Skill Altar** at the top, with a **crystal
+  chest** at its base), the **Castle Wall** (waves attack from the
+  right only), and the **Fair Grounds** (waves can attack from either
+  side). Walking into the Wall or Fair Grounds triggers enemy spawns;
+  retreating to the Tower pauses them.
+- **Enemies:** knights (melee, drop **silver**), archers (ranged), and
+  wizards (ranged magic, drop **crystals**). Waves start about 90%
+  knights and gradually mix in more archers and wizards as you rack up
+  kills. Walter's sword one-shots any of them (30 damage vs. 22–30 HP).
+- **Crystals:** carried crystals are at risk — if Walter's HP hits
+  zero, he respawns at the Tower and loses whatever he was carrying but
+  hadn't banked. Walking onto the chest automatically banks whatever
+  you're carrying. The altar lets you spend **carried + banked
+  combined** to unlock any of the five spells (fireball, lightning,
+  freeze, summon ally, black hole) — your choice, not an automatic
+  unlock.
+- **Silver & armor:** knights drop silver instead — a separate, simpler
+  currency with no carry/bank risk (it's just always safe). Spend it at
+  the same altar on **Leather Armor** (5 silver, a 150-point buffer —
+  1.5× Walter's 100 HP) or **Steel Armor** (10 silver, a 200-point
+  buffer, 2×). Armor is consumable: incoming damage drains the armor bar
+  completely before touching Walter's actual HP, and once it hits zero
+  it's gone. Buying new armor replaces whatever's left of the old piece
+  rather than stacking.
+
+**Progress saves to the Sheet now** — this used to be deferred, no longer
+is. There's no shared leaderboard for Walter yet, but that's the only
+thing still on the "later" list.
+
+## How Walter vs. Wizards saves progress
+
+The first thing the game asks for is a **name and password** — a
+lightweight login, not a real account system. Typing a brand-new name
+auto-creates a save under that name with whatever password you typed;
+typing an existing name requires the matching password to load it
+(and to prevent someone else from overwriting your save by reusing your
+name). There's also a **"Play without saving"** link on that screen for
+anyone who just wants to try the game once.
+
+**What's saved:** unlocked spells, armor type, silver, and *banked*
+crystals. **What's not:** carried-but-unbanked crystals, kill count, and
+HP — those always reset fresh each session, same as any other respawn.
+A save only updates at natural checkpoints — depositing crystals at the
+chest, or buying a spell or armor at the altar — not continuously, so
+nothing is spammed to the Sheet on every single knight kill.
+
+**The save format is a deliberately simple, hand-readable string** (not
+JSON), stored as-is in the `progress` column of `WalterProgress`:
+
+```
+$<silver>$&<5 spell letters>&@<banked crystals>@!<armor: L/S/N>!
+```
+
+Example: `$12$&fLzsb&@5@!N!` means 12 silver, only Lightning unlocked
+(the one uppercase letter — the rest are locked/lowercase), 5 banked
+crystals, no armor. The five spell-letter positions are always in this
+order: **F**ireball, **L**ightning, free**Z**e, **S**ummonAlly,
+**B**lackHole. Freeze uses Z instead of F since fireball already claimed
+F; every other spell just uses its natural first letter.
+
+You can read or hand-edit anyone's save directly in the Sheet if you
+ever need to (e.g. to grant someone a spell, or fix a mistake) — it's
+plain text, no encoding beyond what's shown above.
+
+**A technical note for future changes:** since two games now share one
+page, both `game.js` and `walter.js` check that their *own* canvas is
+the focused element before responding to a keypress (see
+`document.activeElement !== canvas` near the top of each file's keydown
+handler). If you add a third game to this page later, it'll need the
+same guard, or its controls will collide with the other two.
+
 ## Adding a new page (or renaming/reordering nav links)
 
 The nav links are shared across every page from one file: **`nav.html`**.
@@ -283,9 +369,10 @@ that instead).
 1. Create a new repository on GitHub (public repos get free Pages hosting).
 2. Upload the website files — `index.html`, `rsvps.html`, `lore.html`,
    `submit.html`, `squad.html`, `chat.html`, `game.html`, `nav.html`,
-   `style.css`, `app.js`, `game.js`, `config.js` (with your URL already
-   pasted in). You don't need to upload the `apps-script` folder; that
-   code lives in the Sheet's Apps Script editor, not on GitHub.
+   `style.css`, `app.js`, `game.js`, `walter.js`, `config.js` (with your
+   URL already pasted in). You don't need to upload the `apps-script`
+   folder; that code lives in the Sheet's Apps Script editor, not on
+   GitHub.
 3. In the repo, go to **Settings → Pages**.
 4. Under "Build and deployment," set **Source** to "Deploy from a branch,"
    pick the `main` branch and the `/ (root)` folder, then **Save**.
