@@ -37,6 +37,8 @@
     chestLid: "#8B5A2B",
     altarGlow: "#F6C945",
     player: "#1B7A4A",
+    playerLeather: "#8B5A2B",
+    playerSteel: "#9CA3AF",
     playerSword: "#9CA3AF",
     knight: "#5B6472",
     knightTrim: "#E5484D",
@@ -102,10 +104,10 @@
 
   const SPELLS = {
     fireball:    { label: "Fireball",     cost: 10, damage: 20, speed: 8,   cooldown: 30 },
-    lightning:   { label: "Lightning",    cost: 10, damage: 26, range: 260, cooldown: 45 },
+    lightning:   { label: "Lightning",    cost: 10, damage: 26, range: 260, chainMax: 3, cooldown: 45 },
     freeze:      { label: "Freeze",       cost: 10, radius: 120, duration: 180, cooldown: 240 },
     summonAlly:  { label: "Summon Ally",  cost: 10, allyDuration: 900, allyDamage: 12, allyHp: 40, cooldown: 300 },
-    blackHole:   { label: "Black Hole",   cost: 10, radius: 100, duration: 180, damagePerFrame: 0.3, pullStrength: 0.6, cooldown: 360 }
+    blackHole:   { label: "Black Hole",   cost: 10, radius: 100, duration: 180, damagePerFrame: 0.3, pullStrength: 3.5, cooldown: 360 }
   };
   const SPELL_ORDER = ["fireball", "lightning", "freeze", "summonAlly", "blackHole"];
 
@@ -394,17 +396,33 @@
         vx: cfg.speed * player.facing, damage: cfg.damage
       });
     }else if (key === "lightning"){
-      const originX = player.x + PLAYER_W/2;
-      const originY = player.y + PLAYER_H/2;
-      const reachX = originX + cfg.range * player.facing;
-      enemies.forEach(en => {
-        const enCx = en.x + en.w/2;
-        const withinLine = player.facing > 0 ? (enCx > originX && enCx < reachX) : (enCx < originX && enCx > reachX);
-        if (en.hp > 0 && withinLine && Math.abs((en.y + en.h/2) - originY) < 50){
-          damageEnemy(en, cfg.damage);
-        }
-      });
-      effects.push({ type: "lightning-flash", x: originX, y: originY, dir: player.facing, range: cfg.range, life: 8 });
+      // Chain lightning: bridges from Walter to the nearest enemy, then from
+      // that enemy to the next nearest (not yet hit), up to chainMax links.
+      const chainPoints = [{ x: player.x + PLAYER_W/2, y: player.y + PLAYER_H/2 }];
+      const hitSoFar = [];
+      let fromX = chainPoints[0].x, fromY = chainPoints[0].y;
+
+      for (let i = 0; i < cfg.chainMax; i++){
+        let nearest = null, nearestDist = Infinity;
+        enemies.forEach(en => {
+          if (en.hp <= 0 || hitSoFar.includes(en)) return;
+          const enCx = en.x + en.w/2, enCy = en.y + en.h/2;
+          const dx = enCx - fromX, dy = enCy - fromY;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          if (dist <= cfg.range && dist < nearestDist){
+            nearest = en;
+            nearestDist = dist;
+          }
+        });
+        if (!nearest) break;
+        hitSoFar.push(nearest);
+        damageEnemy(nearest, cfg.damage);
+        const enCx = nearest.x + nearest.w/2, enCy = nearest.y + nearest.h/2;
+        chainPoints.push({ x: enCx, y: enCy });
+        fromX = enCx; fromY = enCy;
+      }
+
+      effects.push({ type: "lightning-chain", points: chainPoints, life: 10 });
     }else if (key === "freeze"){
       const originX = player.x + PLAYER_W/2, originY = player.y + PLAYER_H/2;
       enemies.forEach(en => {
@@ -716,7 +734,10 @@
   function drawPlayer(){
     const x = worldToScreen(player.x);
     if (player.invulnFrames > 0 && Math.floor(frame / 4) % 2 === 0) return;
-    ctx.fillStyle = COLORS.player;
+    const bodyColor = player.armorType === "leather" ? COLORS.playerLeather
+      : player.armorType === "steel" ? COLORS.playerSteel
+      : COLORS.player;
+    ctx.fillStyle = bodyColor;
     ctx.fillRect(x, player.y, PLAYER_W, PLAYER_H);
     ctx.strokeStyle = COLORS.playerSword;
     ctx.lineWidth = 3;
@@ -819,12 +840,15 @@
       ctx.beginPath();
       ctx.arc(x, fx.y, fx.radius * (1 - fx.life/20), 0, Math.PI*2);
       ctx.stroke();
-    }else if (fx.type === "lightning-flash"){
+    }else if (fx.type === "lightning-chain"){
       ctx.strokeStyle = COLORS.lightning;
       ctx.lineWidth = 4;
       ctx.beginPath();
-      ctx.moveTo(x, fx.y);
-      ctx.lineTo(x + fx.range * fx.dir, fx.y);
+      fx.points.forEach((p, i) => {
+        const sx = worldToScreen(p.x);
+        if (i === 0) ctx.moveTo(sx, p.y);
+        else ctx.lineTo(sx, p.y);
+      });
       ctx.stroke();
     }else if (fx.type === "black-hole"){
       ctx.fillStyle = COLORS.blackHole;
