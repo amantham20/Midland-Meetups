@@ -118,6 +118,18 @@
   };
   const ARMOR_ORDER = ["leather", "steel"];
 
+  // Letter code for each spell in the progress-save string (F/L/Z/S/B),
+  // uppercase = unlocked, lowercase = locked. "fireball" and "freeze" both
+  // start with F, so freeze uses Z and summonAlly uses S to keep every
+  // letter unique.
+  const SPELL_LETTERS = [
+    { key: "fireball",   letter: "F" },
+    { key: "lightning",  letter: "L" },
+    { key: "freeze",     letter: "Z" },
+    { key: "summonAlly", letter: "S" },
+    { key: "blackHole",  letter: "B" }
+  ];
+
   const DEBUG = true; // logs key events to the console — flip to false once things look right
   /* ==================== end config ==================== */
 
@@ -128,6 +140,7 @@
   let respawnMessageTimer, respawnMessageText;
   let altarOpen, started, running;
   let animId, nextSpawnFrame;
+  let walterName, walterPassword, walterGuestMode, loadedProgress, loginComplete;
 
   /* ---------------- helpers ---------------- */
   function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
@@ -165,6 +178,57 @@
     player.armorHp = player.armorMaxHp; // replaces whatever armor was left, if any
     if (DEBUG) console.log("[WvW] bought " + key + " armor, armorHp=" + player.armorHp);
     return true;
+  }
+
+  /* ---------------- progress save/load codex ----------------
+     Format: $<silver>$&<5 spell letters>&@<banked crystals>@!<armor L/S/N>!
+     Spell letters use SPELL_LETTERS above, uppercase = unlocked.
+     Only banked crystals persist — carried (at-risk) crystals are always
+     0 at the start of a session, same as any other respawn. Kill count
+     and HP aren't part of this format, so both reset each session too. */
+  function encodeProgress(){
+    const spellStr = SPELL_LETTERS.map(({ key, letter }) =>
+      spellUnlocked.has(key) ? letter.toUpperCase() : letter.toLowerCase()
+    ).join("");
+    const armorChar = player.armorType === "leather" ? "L" : player.armorType === "steel" ? "S" : "N";
+    return "$" + player.silver + "$&" + spellStr + "&@" + player.bankedCrystals + "@!" + armorChar + "!";
+  }
+
+  function decodeProgress(str){
+    const result = { silver: 0, crystals: 0, armor: "none", spells: new Set() };
+    if (!str) return result;
+    const m = String(str).match(/\$(\d+)\$&([A-Za-z]*)&@(\d+)@!([LSN])!/);
+    if (!m) return result;
+    result.silver = parseInt(m[1], 10) || 0;
+    result.crystals = parseInt(m[3], 10) || 0;
+    result.armor = m[4] === "L" ? "leather" : m[4] === "S" ? "steel" : "none";
+    const spellChars = m[2] || "";
+    SPELL_LETTERS.forEach(({ key, letter }, i) => {
+      if (spellChars[i] && spellChars[i] === letter.toUpperCase()) result.spells.add(key);
+    });
+    return result;
+  }
+
+  function applyLoadedProgress(){
+    if (!loadedProgress) return;
+    player.silver = loadedProgress.silver;
+    player.bankedCrystals = loadedProgress.crystals;
+    loadedProgress.spells.forEach(key => spellUnlocked.add(key));
+    if (loadedProgress.armor !== "none"){
+      player.armorType = loadedProgress.armor;
+      player.armorMaxHp = Math.round(PLAYER_MAX_HP * ARMOR[loadedProgress.armor].multiplier);
+      player.armorHp = player.armorMaxHp;
+    }
+  }
+
+  async function saveProgress(){
+    if (walterGuestMode || !walterName) return; // guest / not logged in — nothing to save to
+    try{
+      const res = await apiPost({ action: "walterSaveProgress", name: walterName, password: walterPassword, progress: encodeProgress() });
+      if (DEBUG) console.log("[WvW] progress saved: " + encodeProgress(), res);
+    }catch(err){
+      console.error("[WvW] save failed", err);
+    }
   }
 
   function spendCrystals(cost){
@@ -207,7 +271,7 @@
   /* ---------------- input ---------------- */
   function onKeyDown(e){
     if (document.activeElement !== canvas) return;
-    if (!started){ startGame(); return; }
+    if (!started){ if (loginComplete) startGame(); return; }
     if (altarOpen) return; // altar has its own buttons, don't also move/attack behind it
 
     if (["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Space"].includes(e.code)) e.preventDefault();
@@ -237,7 +301,7 @@
   }
 
   function handleTap(clientX){
-    if (!started){ startGame(); return; }
+    if (!started){ if (loginComplete) startGame(); return; }
     const rect = canvas.getBoundingClientRect();
     const relX = (clientX - rect.left) / rect.width;
     if (relX < 0.33) keysDown.add("ArrowLeft");
@@ -566,6 +630,7 @@
         player.bankedCrystals += player.carriedCrystals;
         if (DEBUG) console.log("[WvW] deposited " + player.carriedCrystals + " crystals, banked=" + player.bankedCrystals);
         player.carriedCrystals = 0;
+        saveProgress();
       }
     }
 
@@ -825,6 +890,7 @@
 
   function startGame(){
     resetState();
+    applyLoadedProgress();
     started = true;
     hideOverlay();
     canvas.focus();
@@ -833,14 +899,107 @@
 
   function hideOverlay(){ overlay.style.display = "none"; }
 
+  function progressSummaryHTML(){
+    if (walterGuestMode) return `<p style="font-size:0.8rem;opacity:0.8;">Playing as guest — progress won't be saved.</p>`;
+    if (!loadedProgress) return "";
+    const spellCount = loadedProgress.spells.size;
+    const hasAnything = spellCount > 0 || loadedProgress.silver > 0 || loadedProgress.crystals > 0 || loadedProgress.armor !== "none";
+    if (!hasAnything) return `<p style="font-size:0.8rem;opacity:0.8;">New save — starting fresh.</p>`;
+    const armorLabel = loadedProgress.armor !== "none" ? ARMOR[loadedProgress.armor].label : "no armor";
+    return `<p style="font-size:0.8rem;opacity:0.8;">Welcome back — loaded ${spellCount} spell${spellCount === 1 ? "" : "s"}, ${loadedProgress.silver} silver, ${loadedProgress.crystals} banked crystals, ${armorLabel}.</p>`;
+  }
+
   function showStartOverlay(){
     overlay.style.display = "flex";
     overlayInner.innerHTML = `
       <h3>Walter vs Wizards</h3>
       <p>Arrow keys to move, Up to jump or climb the tower ladder, Space to swing your sword (or cast your active spell). Number keys switch spells once you've unlocked them at the altar.</p>
+      ${progressSummaryHTML()}
       <button type="button" class="btn" id="wvw-play-btn">Play</button>
     `;
     document.getElementById("wvw-play-btn").addEventListener("click", startGame);
+  }
+
+  function showLoginOverlay(){
+    overlay.style.display = "flex";
+    overlayInner.innerHTML = `
+      <h3>Walter vs Wizards</h3>
+      <p>Log in with a name and password to save your spells, armor, silver, and crystals. First time using a name creates a fresh save automatically — just remember the password.</p>
+      <div class="form-row"><input type="text" id="wvw-login-name" placeholder="Name" maxlength="40"></div>
+      <div class="form-row"><input type="password" id="wvw-login-password" placeholder="Password" maxlength="40"></div>
+      <button type="button" class="btn" id="wvw-login-btn">Log In &amp; Play</button>
+      <p class="form-note" id="wvw-login-status"></p>
+      <p class="form-note" style="margin-top:6px;"><a href="#" id="wvw-guest-link" style="color:inherit;text-decoration:underline;">Play without saving</a></p>
+    `;
+
+    if (typeof getStoredName === "function"){
+      const stored = getStoredName();
+      if (stored) document.getElementById("wvw-login-name").value = stored;
+    }
+
+    document.getElementById("wvw-login-btn").addEventListener("click", attemptLogin);
+    document.getElementById("wvw-guest-link").addEventListener("click", (e) => {
+      e.preventDefault();
+      walterGuestMode = true;
+      walterName = null;
+      walterPassword = null;
+      loadedProgress = null;
+      loginComplete = true;
+      showStartOverlay();
+    });
+  }
+
+  async function attemptLogin(){
+    const nameInput = document.getElementById("wvw-login-name");
+    const passwordInput = document.getElementById("wvw-login-password");
+    const statusEl = document.getElementById("wvw-login-status");
+    const name = nameInput.value.trim();
+    const password = passwordInput.value;
+
+    if (!name || !password){
+      statusEl.textContent = "Enter both a name and a password.";
+      statusEl.style.color = "var(--red)";
+      return;
+    }
+
+    if (!isConfigured()){
+      statusEl.textContent = "Not connected to a Google Sheet yet — see config.js. Playing without saving.";
+      statusEl.style.color = "var(--red)";
+      walterGuestMode = true;
+      walterName = null;
+      walterPassword = null;
+      loadedProgress = null;
+      loginComplete = true;
+      setTimeout(showStartOverlay, 1200);
+      return;
+    }
+
+    const btn = document.getElementById("wvw-login-btn");
+    btn.disabled = true;
+    statusEl.textContent = "Logging in…";
+    statusEl.style.color = "var(--muted)";
+
+    try{
+      const res = await apiPost({ action: "walterLogin", name, password });
+      if (!res.success){
+        statusEl.textContent = res.error || "Couldn't log in — try again.";
+        statusEl.style.color = "var(--red)";
+        btn.disabled = false;
+        return;
+      }
+      walterGuestMode = false;
+      walterName = name;
+      walterPassword = password;
+      if (typeof setStoredName === "function") setStoredName(name);
+      loadedProgress = decodeProgress(res.progress);
+      loginComplete = true;
+      showStartOverlay();
+    }catch(err){
+      console.error("[WvW] login failed", err);
+      statusEl.textContent = "Couldn't reach the server — check your connection and try again.";
+      statusEl.style.color = "var(--red)";
+      btn.disabled = false;
+    }
   }
 
   /* ---------------- altar shop ---------------- */
@@ -911,12 +1070,16 @@
           spellUnlocked.add(key);
           if (DEBUG) console.log("[WvW] unlocked spell " + key);
           renderAltar();
+          saveProgress();
         }
       });
     });
     overlayInner.querySelectorAll("button[data-armor]").forEach(btn => {
       btn.addEventListener("click", () => {
-        if (buyArmor(btn.dataset.armor)) renderAltar();
+        if (buyArmor(btn.dataset.armor)){
+          renderAltar();
+          saveProgress();
+        }
       });
     });
     document.getElementById("wvw-altar-close").addEventListener("click", closeAltar);
@@ -932,8 +1095,9 @@
     ctx = canvas.getContext("2d");
     resetState();
     running = false;
+    loginComplete = false;
     draw();
-    showStartOverlay();
+    showLoginOverlay();
 
     canvas.addEventListener("click", (e) => { canvas.focus(); handleTap(e.clientX); });
     canvas.addEventListener("touchstart", (e) => { e.preventDefault(); canvas.focus(); handleTap(e.touches[0].clientX); }, { passive: false });
