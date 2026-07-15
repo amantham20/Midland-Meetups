@@ -63,6 +63,8 @@
     hpBad: "#E14B3C",
     armor: "#9CA3AF",
     armorBg: "#4B5563",
+    mana: "#8B5CF6",
+    manaBg: "#3D2E5C",
     silver: "#8A94A6"
   };
 
@@ -136,6 +138,16 @@
   };
   const ARMOR_ORDER = ["leather", "steel"];
 
+  // Mana gates spell casting on top of each spell's own cooldown. Regen is
+  // slow enough relative to cost that draining it acts as a natural extra
+  // cooldown: 5 mana per cast, 1 mana/sec regen = ~5 seconds to recover a cast.
+  const MANA_COST_PER_SPELL = 5;
+  const MANA_REGEN_PER_SECOND = 1;
+  const MANA_REGEN_PER_FRAME = MANA_REGEN_PER_SECOND / 60;
+  const MAX_MANA_START = 50;
+  const MANA_UPGRADE_COST_SILVER = 100;
+  const MANA_UPGRADE_AMOUNT = 10;
+
   // Letter code for each spell in the progress-save string (F/L/Z/S/B),
   // uppercase = unlocked, lowercase = locked. "fireball" and "freeze" both
   // start with F, so freeze uses Z and summonAlly uses S to keep every
@@ -198,6 +210,14 @@
     return true;
   }
 
+  function buyManaUpgrade(){
+    if (player.silver < MANA_UPGRADE_COST_SILVER) return false;
+    player.silver -= MANA_UPGRADE_COST_SILVER;
+    player.maxMana += MANA_UPGRADE_AMOUNT;
+    if (DEBUG) console.log("[WvW] max mana increased to " + player.maxMana);
+    return true;
+  }
+
   /* ---------------- progress save/load codex ----------------
      Format: $<silver>$&<5 spell letters>&@<banked crystals>@!<armor L/S/N>!
      Spell letters use SPELL_LETTERS above, uppercase = unlocked.
@@ -209,17 +229,19 @@
       spellUnlocked.has(key) ? letter.toUpperCase() : letter.toLowerCase()
     ).join("");
     const armorChar = player.armorType === "leather" ? "L" : player.armorType === "steel" ? "S" : "N";
-    return "$" + player.silver + "$&" + spellStr + "&@" + player.bankedCrystals + "@!" + armorChar + "!";
+    return "$" + player.silver + "$&" + spellStr + "&@" + player.bankedCrystals + "@!" + armorChar + "!#" + player.maxMana + "#";
   }
 
   function decodeProgress(str){
-    const result = { silver: 0, crystals: 0, armor: "none", spells: new Set() };
+    const result = { silver: 0, crystals: 0, armor: "none", spells: new Set(), maxMana: MAX_MANA_START };
     if (!str) return result;
-    const m = String(str).match(/\$(\d+)\$&([A-Za-z]*)&@(\d+)@!([LSN])!/);
+    // The #maxMana# segment is optional so saves from before this feature still load fine.
+    const m = String(str).match(/\$(\d+)\$&([A-Za-z]*)&@(\d+)@!([LSN])!(?:#(\d+)#)?/);
     if (!m) return result;
     result.silver = parseInt(m[1], 10) || 0;
     result.crystals = parseInt(m[3], 10) || 0;
     result.armor = m[4] === "L" ? "leather" : m[4] === "S" ? "steel" : "none";
+    result.maxMana = m[5] ? (parseInt(m[5], 10) || MAX_MANA_START) : MAX_MANA_START;
     const spellChars = m[2] || "";
     SPELL_LETTERS.forEach(({ key, letter }, i) => {
       if (spellChars[i] && spellChars[i] === letter.toUpperCase()) result.spells.add(key);
@@ -231,6 +253,8 @@
     if (!loadedProgress) return;
     player.silver = loadedProgress.silver;
     player.bankedCrystals = loadedProgress.crystals;
+    player.maxMana = loadedProgress.maxMana;
+    player.mana = loadedProgress.maxMana; // start each session with mana full, same as HP
     loadedProgress.spells.forEach(key => spellUnlocked.add(key));
     if (loadedProgress.armor !== "none"){
       player.armorType = loadedProgress.armor;
@@ -264,6 +288,7 @@
       facing: 1, hp: PLAYER_MAX_HP,
       carriedCrystals: 0, bankedCrystals: 0, silver: 0,
       armorType: null, armorHp: 0, armorMaxHp: 0,
+      mana: MAX_MANA_START, maxMana: MAX_MANA_START,
       invulnFrames: RESPAWN_INVULN_FRAMES
     };
     enemies = [];
@@ -333,6 +358,7 @@
     updatePlayerMovement();
     updateCamera();
     updateCooldowns();
+    updateMana();
     updateWaveSpawning();
     updateEnemies();
     updateProjectiles();
@@ -340,6 +366,12 @@
     updateEffects();
     checkChestAndAltar();
     if (respawnMessageTimer > 0) respawnMessageTimer--;
+  }
+
+  function updateMana(){
+    if (player.mana < player.maxMana){
+      player.mana = Math.min(player.maxMana, player.mana + MANA_REGEN_PER_FRAME);
+    }
   }
 
   function updatePlayerMovement(){
@@ -404,7 +436,9 @@
   function castSpell(key){
     const cfg = SPELLS[key];
     if (!cfg || spellCooldowns[key] > 0) return;
+    if (player.mana < MANA_COST_PER_SPELL) return;
     spellCooldowns[key] = cfg.cooldown;
+    player.mana -= MANA_COST_PER_SPELL;
 
     if (key === "fireball"){
       playerProjectiles.push({
@@ -1032,12 +1066,20 @@
       ctx.strokeRect(12, 27, 120, 7);
     }
 
+    ctx.fillStyle = COLORS.manaBg;
+    ctx.fillRect(12, 38, 120, 7);
+    ctx.fillStyle = COLORS.mana;
+    ctx.fillRect(12, 38, 120 * Math.max(0, player.mana / player.maxMana), 7);
+    ctx.strokeStyle = COLORS.hud;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(12, 38, 120, 7);
+
     ctx.fillStyle = COLORS.hud;
     ctx.font = "700 13px 'JetBrains Mono', monospace";
     ctx.textAlign = "left";
-    ctx.fillText("Crystals: " + player.carriedCrystals + " carried / " + player.bankedCrystals + " banked", 12, 52);
+    ctx.fillText("Crystals: " + player.carriedCrystals + " carried / " + player.bankedCrystals + " banked", 12, 64);
     ctx.fillStyle = COLORS.silver;
-    ctx.fillText("Silver: " + player.silver, 12, 68);
+    ctx.fillText("Silver: " + player.silver, 12, 80);
 
     ctx.textAlign = "right";
     ctx.fillStyle = COLORS.hud;
@@ -1225,13 +1267,23 @@
       ? `${ARMOR[player.armorType].label}: ${Math.ceil(player.armorHp)}/${player.armorMaxHp}`
       : "No armor equipped";
 
+    const manaAffordable = player.silver >= MANA_UPGRADE_COST_SILVER;
+    const manaRow = `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;">
+        <span>Max Mana: ${player.maxMana}</span>
+        <button type="button" class="btn light" style="padding:6px 12px;font-size:0.8rem;" id="wvw-mana-upgrade-btn" ${manaAffordable ? "" : "disabled"}>+${MANA_UPGRADE_AMOUNT} (${MANA_UPGRADE_COST_SILVER} silver)</button>
+      </div>
+    `;
+
     overlayInner.innerHTML = `
       <h3>Wizard Skill Altar</h3>
-      <p>You have ${total} crystal${total === 1 ? "" : "s"} to spend on spells (carried + banked), and ${player.silver} silver for armor.</p>
+      <p>You have ${total} crystal${total === 1 ? "" : "s"} to spend on spells (carried + banked), and ${player.silver} silver for armor and mana.</p>
       <p style="font-size:0.82rem;opacity:0.85;margin-top:-8px;">${armorStatus}</p>
       <div style="text-align:left;">${spellRows}</div>
       <p style="font-weight:700;margin:14px 0 4px;">Armor (buying replaces your current piece)</p>
       <div style="text-align:left;">${armorRows}</div>
+      <p style="font-weight:700;margin:14px 0 4px;">Mana (repeatable)</p>
+      <div style="text-align:left;">${manaRow}</div>
       <button type="button" class="btn light" id="wvw-altar-close" style="margin-top:14px;">Close</button>
     `;
 
@@ -1256,6 +1308,15 @@
         }
       });
     });
+    const manaBtn = document.getElementById("wvw-mana-upgrade-btn");
+    if (manaBtn){
+      manaBtn.addEventListener("click", () => {
+        if (buyManaUpgrade()){
+          renderAltar();
+          saveProgress();
+        }
+      });
+    }
     document.getElementById("wvw-altar-close").addEventListener("click", closeAltar);
   }
 
