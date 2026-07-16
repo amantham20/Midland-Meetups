@@ -11,6 +11,18 @@ const withPWA = withPWAInit({
 });
 
 const nextConfig: NextConfig = {
+  // Keep firebase-admin out of the webpack bundle (avoids jose/jwks-rsa ESM break).
+  serverExternalPackages: [
+    "firebase-admin",
+    "firebase-admin/app",
+    "firebase-admin/auth",
+    "firebase-admin/firestore",
+    "firebase-admin/messaging",
+    "@google-cloud/firestore",
+    "google-gax",
+    "jose",
+    "jwks-rsa",
+  ],
   images: {
     remotePatterns: [
       {
