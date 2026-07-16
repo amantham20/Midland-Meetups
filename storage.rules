@@ -1,0 +1,10 @@
+rules_version = '2';
+// Squad photos are stored as compressed base64 on Firestore documents.
+// Storage is not used by the current app. Rules kept locked-down if Storage is enabled later.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
