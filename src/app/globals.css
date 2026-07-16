@@ -1,0 +1,167 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #eff1f5;
+  --ink: #14181f;
+  --muted: #667085;
+  --border: #e4e7ec;
+
+  --blue: #2851e3;
+  --blue-ink: #1b3aa8;
+  --red: #e5484d;
+  --yellow: #f6b93b;
+  --green: #12b76a;
+
+  --display: var(--font-display), "Space Grotesk", sans-serif;
+  --body: var(--font-body), "Inter", sans-serif;
+  --mono: var(--font-mono), "JetBrains Mono", monospace;
+
+  --r-lg: 18px;
+  --r-md: 12px;
+  --r-sm: 8px;
+
+  --shadow-sm: 0 1px 2px rgba(20, 24, 31, 0.06), 0 1px 1px rgba(20, 24, 31, 0.04);
+  --shadow-md: 0 10px 30px -12px rgba(20, 24, 31, 0.25);
+  --shadow-lg: 0 24px 60px -20px rgba(20, 24, 31, 0.35);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-blue: var(--blue);
+  --color-blue-ink: var(--blue-ink);
+  --color-red: var(--red);
+  --color-yellow: var(--yellow);
+  --color-green: var(--green);
+  --font-display: var(--display);
+  --font-sans: var(--body);
+  --font-mono: var(--mono);
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+}
+
+/* Keep base styles in @layer so Tailwind utilities (text-*, etc.) can override them.
+   Unlayered rules like `a { color: inherit }` beat utilities and break active nav colors. */
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--body);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a {
+    color: inherit;
+  }
+
+  img {
+    max-width: 100%;
+    display: block;
+  }
+
+  button {
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  input,
+  textarea,
+  select {
+    font-family: inherit;
+  }
+}
+
+/* Form controls shared look */
+.field {
+  width: 100%;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 0.65rem 0.85rem;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.field:focus {
+  border-color: var(--blue);
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.field-hint {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 999px;
+  background: var(--blue);
+  color: white;
+  font-weight: 600;
+  padding: 0.7rem 1.25rem;
+  transition: background 0.15s ease;
+}
+
+.btn-primary:hover {
+  background: var(--blue-ink);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.form-card {
+  max-width: 560px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.form-row {
+  margin-bottom: 1rem;
+}
+
+.form-row.two-col {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 520px) {
+  .form-row.two-col {
+    grid-template-columns: 1fr 1fr;
+  }
+}

@@ -1,0 +1,77 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Admin access:
+    // 1) custom claim admin == true (preferred long-term), OR
+    // 2) hard-coded bootstrap UIDs (first organizers — keep in sync with NEXT_PUBLIC_ADMIN_UIDS)
+    function isBootstrapAdmin() {
+      return signedIn() && request.auth.uid in [
+        'HrTrYtRdntX7pesO72lRAVnPTZC2'
+      ];
+    }
+
+    function isAdmin() {
+      return signedIn() && (
+        request.auth.token.admin == true ||
+        isBootstrapAdmin()
+      );
+    }
+
+    match /events/{eventId} {
+      allow read: if resource.data.approved == true || isAdmin()
+        || (signedIn() && resource.data.createdBy == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.approved == false
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.keys().hasAll([
+          'title', 'host', 'date', 'time', 'location', 'description',
+          'status', 'statusNote', 'approved', 'createdBy'
+        ]);
+      allow update, delete: if isAdmin();
+    }
+
+    match /memories/{memoryId} {
+      allow read: if resource.data.approved == true || isAdmin()
+        || (signedIn() && resource.data.createdBy == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.approved == false
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /squad/{memberId} {
+      allow read: if resource.data.approved == true || isAdmin()
+        || (signedIn() && resource.data.createdBy == request.auth.uid);
+      // Photos are compressed base64 on the document (no Cloud Storage).
+      // Soft size guard: ~350k chars base64 ≈ under Firestore's 1 MiB doc limit with other fields.
+      allow create: if signedIn()
+        && request.resource.data.approved == false
+        && request.resource.data.createdBy == request.auth.uid
+        && (!('photoBase64' in request.resource.data)
+            || request.resource.data.photoBase64.size() < 350000);
+      allow update, delete: if isAdmin();
+    }
+
+    match /rsvps/{rsvpId} {
+      allow read: if true;
+      allow create, update: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && rsvpId == request.auth.uid + '_' + request.resource.data.eventId
+        && request.resource.data.status in ['going', 'not-going'];
+      allow delete: if signedIn()
+        && resource.data.userId == request.auth.uid;
+    }
+
+    match /fcmTokens/{tokenId} {
+      allow read: if isAdmin();
+      allow create, update: if signedIn()
+        && request.resource.data.userId == request.auth.uid;
+      allow delete: if signedIn()
+        && resource.data.userId == request.auth.uid;
+    }
+  }
+}
