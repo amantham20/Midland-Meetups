@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { ToastProvider } from "@/contexts/ToastContext";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 
@@ -68,11 +69,13 @@ export default function RootLayout({
     >
       <body className="flex min-h-full flex-col font-sans antialiased">
         <AuthProvider>
-          <Header />
-          <main className="mx-auto w-full max-w-[1180px] flex-1 px-6 py-10">
-            {children}
-          </main>
-          <Footer />
+          <ToastProvider>
+            <Header />
+            <main className="mx-auto w-full max-w-[1180px] flex-1 px-6 py-10">
+              {children}
+            </main>
+            <Footer />
+          </ToastProvider>
         </AuthProvider>
       </body>
     </html>

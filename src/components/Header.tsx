@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import { BrandMark } from "./BrandMark";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/contexts/ToastContext";
 import { signOut } from "@/lib/firebase/auth";
 
 const NAV = [
@@ -44,6 +45,7 @@ function linkClass(active: boolean, cta?: boolean) {
 export function Header() {
   const pathname = usePathname();
   const { user, loading, isAdmin } = useAuth();
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const navId = useId();
 
@@ -72,7 +74,9 @@ export function Header() {
         type="button"
         onClick={() => {
           setOpen(false);
-          void signOut();
+          void signOut()
+            .then(() => toast.info("Signed out."))
+            .catch(() => toast.error("Couldn't sign out. Try again."));
         }}
         className={linkClass(false)}
         title={user.email || user.displayName || "Signed in"}

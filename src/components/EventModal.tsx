@@ -10,6 +10,7 @@ import {
 } from "@/lib/utils";
 import { setRsvp } from "@/lib/firebase/data";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/contexts/ToastContext";
 import { Icons } from "./Icons";
 import { StatusPill } from "./StatusPill";
 
@@ -23,6 +24,7 @@ function EventModalBody({
   onClose: () => void;
 }) {
   const { user } = useAuth();
+  const toast = useToast();
   const [name, setName] = useState(user?.displayName || "");
   const [statusMsg, setStatusMsg] = useState("");
   const [saving, setSaving] = useState(false);
@@ -50,11 +52,13 @@ function EventModalBody({
   async function handleRsvp(value: RsvpStatus) {
     if (!user) {
       setStatusMsg("Sign in to RSVP.");
+      toast.info("Sign in to RSVP.");
       return;
     }
     const displayName = name.trim() || user.displayName || user.email || "Guest";
     if (!displayName.trim()) {
       setStatusMsg("Add your name first.");
+      toast.info("Add your name first.");
       return;
     }
 
@@ -68,16 +72,18 @@ function EventModalBody({
         name: displayName,
         status: next,
       });
-      setStatusMsg(
-        next
-          ? next === "going"
-            ? "You're going!"
-            : "Marked as not going."
-          : "RSVP cleared.",
-      );
+      const msg = next
+        ? next === "going"
+          ? "You're going!"
+          : "Marked as not going."
+        : "RSVP cleared.";
+      setStatusMsg(msg);
+      toast.success(msg);
     } catch (err) {
       console.error(err);
-      setStatusMsg("Couldn't save that — check your connection and try again.");
+      const msg = "Couldn't save that — check your connection and try again.";
+      setStatusMsg(msg);
+      toast.error(msg);
     } finally {
       setSaving(false);
     }

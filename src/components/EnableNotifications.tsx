@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getToken } from "firebase/messaging";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/contexts/ToastContext";
 import {
   getClientMessaging,
   getMessagingServiceWorkerRegistration,
@@ -31,6 +32,7 @@ function writeEnabled(uid: string) {
 
 export function EnableNotifications() {
   const { user } = useAuth();
+  const toast = useToast();
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   // Start hidden to avoid flash; reveal only if this user still needs the CTA
@@ -91,26 +93,31 @@ export function EnableNotifications() {
     setMsg("");
     try {
       if (typeof Notification === "undefined") {
-        setMsg("Notifications aren't available in this browser.");
+        const m = "Notifications aren't available in this browser.";
+        setMsg(m);
+        toast.error(m);
         return;
       }
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
-        setMsg(
-          "Notifications were blocked. You can enable them in browser settings.",
-        );
+        const m =
+          "Notifications were blocked. You can enable them in browser settings.";
+        setMsg(m);
+        toast.info(m);
         return;
       }
       const messaging = await getClientMessaging();
       if (!messaging) {
-        setMsg("Push notifications aren't supported in this browser.");
+        const m = "Push notifications aren't supported in this browser.";
+        setMsg(m);
+        toast.error(m);
         return;
       }
       const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY?.trim();
       if (!vapidKey) {
-        setMsg(
-          "VAPID key missing. Firebase Console → Project settings → Cloud Messaging → Web Push certificates → Generate key pair, then set NEXT_PUBLIC_FIREBASE_VAPID_KEY and redeploy.",
-        );
+        const m = "VAPID key is not configured on this deployment.";
+        setMsg(m);
+        toast.error(m);
         return;
       }
       const registration =
@@ -121,17 +128,21 @@ export function EnableNotifications() {
         serviceWorkerRegistration: registration,
       });
       if (!token) {
-        setMsg("Could not get a push token.");
+        const m = "Could not get a push token.";
+        setMsg(m);
+        toast.error(m);
         return;
       }
       await saveFcmToken(user!.uid, token);
       writeEnabled(user!.uid);
       setShowCta(false);
+      toast.success("Reminders enabled on this device.");
     } catch (err) {
       console.error(err);
-      setMsg(
-        "Couldn't enable notifications. Try again after the PWA is installed over HTTPS.",
-      );
+      const m =
+        "Couldn't enable notifications. Try again after the PWA is installed over HTTPS.";
+      setMsg(m);
+      toast.error(m);
     } finally {
       setBusy(false);
     }

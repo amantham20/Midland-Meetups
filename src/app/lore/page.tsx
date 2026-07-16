@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { ConfigNotice } from "@/components/ConfigNotice";
 import { EmptyNote } from "@/components/EmptyNote";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/contexts/ToastContext";
 import {
   submitMemory,
   subscribeApprovedMemories,
@@ -16,6 +17,7 @@ import { formatDateShort } from "@/lib/utils";
 
 export default function LorePage() {
   const { user, configured } = useAuth();
+  const toast = useToast();
   const [entries, setEntries] = useState<Memory[]>([]);
   const [loading, setLoading] = useState(() => isFirebaseConfigured());
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +43,7 @@ export default function LorePage() {
     e.preventDefault();
     if (!user) {
       setStatus("Sign in to send a memory.");
+      toast.info("Sign in to send a memory.");
       return;
     }
     const form = e.currentTarget;
@@ -55,10 +58,15 @@ export default function LorePage() {
         userId: user.uid,
       });
       form.reset();
-      setStatus("Sent! Your story is in for review and will show up once approved.");
+      const msg =
+        "Sent! Your story is in for review and will show up once approved.";
+      setStatus(msg);
+      toast.success(msg);
     } catch (err) {
       console.error(err);
-      setStatus("Something went wrong. Check your connection and try again.");
+      const msg = "Something went wrong. Check your connection and try again.";
+      setStatus(msg);
+      toast.error(msg);
     } finally {
       setSaving(false);
     }

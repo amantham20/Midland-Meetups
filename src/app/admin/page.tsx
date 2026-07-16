@@ -7,6 +7,7 @@ import { ConfigNotice } from "@/components/ConfigNotice";
 import { EmptyNote } from "@/components/EmptyNote";
 import { StatusPill } from "@/components/StatusPill";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/contexts/ToastContext";
 import {
   approveDocument,
   fetchAllForAdmin,
@@ -35,6 +36,7 @@ export default function AdminPage() {
     configured,
     refreshClaims,
   } = useAuth();
+  const toast = useToast();
 
   const [events, setEvents] = useState<MeetupEvent[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
@@ -133,11 +135,13 @@ export default function AdminPage() {
       await approveDocument(collectionName, id);
       await load();
       setInfo("Approved.");
+      toast.success("Approved.");
     } catch (err) {
       console.error(err);
-      setError(
-        "Approve failed. You need the admin custom claim on your Firebase user.",
-      );
+      const msg =
+        "Approve failed. Check admin access and Firestore rules.";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setBusyId(null);
     }
@@ -154,9 +158,12 @@ export default function AdminPage() {
       await rejectDocument(collectionName, id);
       await load();
       setInfo("Rejected and removed.");
+      toast.success("Rejected and removed.");
     } catch (err) {
       console.error(err);
-      setError("Reject failed. Check admin custom claim and rules.");
+      const msg = "Reject failed. Check admin access and Firestore rules.";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setBusyId(null);
     }
@@ -171,9 +178,12 @@ export default function AdminPage() {
       await updateEventStatus(eventId, draft.status, draft.note);
       await load();
       setInfo("Event status updated.");
+      toast.success("Event status updated.");
     } catch (err) {
       console.error(err);
-      setError("Status update failed. Check admin custom claim and rules.");
+      const msg = "Status update failed. Check admin access and rules.";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setBusyId(null);
     }
@@ -186,15 +196,17 @@ export default function AdminPage() {
     try {
       await requestAdminClaim();
       await refreshClaims();
-      setInfo(
-        "Admin claim granted. You can approve content and edit event status now.",
-      );
+      const msg =
+        "Admin claim granted. You can approve content and edit event status now.";
+      setInfo(msg);
+      toast.success(msg);
       await load();
     } catch (err) {
       console.error(err);
-      setError(
-        "Could not grant admin claim. Set FIREBASE_SERVICE_ACCOUNT_JSON on the server (Firebase Console → Project settings → Service accounts → Generate new private key), keep your UID in NEXT_PUBLIC_ADMIN_UIDS, or set the claim manually: {\"admin\": true}. Note: Firestore rules already allow your bootstrap UID without a claim.",
-      );
+      const msg =
+        "Could not grant admin claim. Bootstrap UID already works for approve/import without a service account.";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setClaimBusy(false);
     }

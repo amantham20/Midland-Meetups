@@ -8,6 +8,7 @@ import { EmptyNote } from "@/components/EmptyNote";
 import { Icons } from "@/components/Icons";
 import { SquadPhoto } from "@/components/SquadPhoto";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/contexts/ToastContext";
 import {
   submitSquadMember,
   subscribeApprovedSquad,
@@ -22,6 +23,7 @@ import { resizeImageToBase64 } from "@/lib/utils";
 
 export default function SquadPage() {
   const { user, configured } = useAuth();
+  const toast = useToast();
   const [members, setMembers] = useState<SquadMember[]>(() => {
     const cached = readSquadListCache<SquadMember[]>();
     return cached ?? [];
@@ -72,6 +74,7 @@ export default function SquadPage() {
     e.preventDefault();
     if (!user) {
       setStatus("Sign in to join the squad.");
+      toast.info("Sign in to join the squad.");
       return;
     }
     const form = e.currentTarget;
@@ -85,7 +88,9 @@ export default function SquadPage() {
         ?.files?.[0];
       if (file) {
         if (file.type !== "image/jpeg" && file.type !== "image/png") {
-          setStatus("That photo needs to be a JPG or PNG.");
+          const msg = "That photo needs to be a JPG or PNG.";
+          setStatus(msg);
+          toast.error(msg);
           setSaving(false);
           return;
         }
@@ -108,9 +113,10 @@ export default function SquadPage() {
         userId: user.uid,
       });
       form.reset();
-      setStatus(
-        "Sent! Your profile is in for review and will show up once approved.",
-      );
+      const msg =
+        "Sent! Your profile is in for review and will show up once approved.";
+      setStatus(msg);
+      toast.success(msg);
     } catch (err) {
       console.error(err);
       const message =
@@ -118,6 +124,7 @@ export default function SquadPage() {
           ? err.message
           : "Something went wrong. Check your connection and try again.";
       setStatus(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { ConfigNotice } from "@/components/ConfigNotice";
 import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "@/lib/toast-store";
 import { submitEvent } from "@/lib/firebase/data";
 import { formatTimeDisplay } from "@/lib/utils";
 
@@ -15,7 +16,10 @@ export default function SubmitPage() {
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!user) return;
+    if (!user) {
+      toast.info("Sign in to submit an event.");
+      return;
+    }
     const form = e.currentTarget;
     const fd = new FormData(form);
     const timeRaw = String(fd.get("time") || "");
@@ -24,6 +28,7 @@ export default function SubmitPage() {
 
     setSaving(true);
     setStatus("Sending…");
+    toast.info("Submitting event…");
     try {
       await submitEvent({
         title: String(fd.get("title") || "").trim(),
@@ -35,12 +40,15 @@ export default function SubmitPage() {
         userId: user.uid,
       });
       form.reset();
-      setStatus(
-        "Sent! Your event is in for review and will show up on the board once approved.",
-      );
+      const msg =
+        "Event submitted! It'll show on the board once it's approved.";
+      setStatus(msg);
+      toast.success(msg);
     } catch (err) {
       console.error(err);
-      setStatus("Something went wrong. Check your connection and try again.");
+      const msg = "Couldn't submit that event. Check your connection and try again.";
+      setStatus(msg);
+      toast.error(msg);
     } finally {
       setSaving(false);
     }

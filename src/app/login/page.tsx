@@ -5,10 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/PageHeader";
 import { ConfigNotice } from "@/components/ConfigNotice";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/contexts/ToastContext";
 import { registerWithEmail, signInWithEmail } from "@/lib/firebase/auth";
 
 function LoginForm() {
   const { configured, user, loading } = useAuth();
+  const toast = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/";
@@ -37,17 +39,20 @@ function LoginForm() {
     try {
       if (mode === "register") {
         await registerWithEmail(email, password, displayName);
+        toast.success("Account created — you're signed in.");
       } else {
         await signInWithEmail(email, password);
+        toast.success("Signed in.");
       }
       router.push(next);
     } catch (err) {
       console.error(err);
-      setError(
+      const msg =
         mode === "register"
           ? "Couldn't create that account. Use a valid email and a password of at least 6 characters."
-          : "Couldn't sign in. Check your email and password.",
-      );
+          : "Couldn't sign in. Check your email and password.";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }
