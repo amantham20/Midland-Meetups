@@ -19,7 +19,7 @@ Progressive Web App rewrite of the Midland Meetups bulletin board.
 | The Lore Letter | Firestore `memories` + submission form |
 | The Squad | Firestore `squad` + inline compressed base64 photos (no Storage) |
 | Submit an Event | Auth-gated form (replaces plaintext `SUBMIT_PASSWORD`) |
-| Sign-in | Firebase Auth — Google + Email/Password |
+| Sign-in | Firebase Auth — Email/Password |
 | Admin queue | `/admin` — approve/reject + event status (bootstrap UID and/or admin claim) |
 | PWA install | Web App Manifest + service worker via next-pwa |
 | Event reminders | FCM tokens + Next.js `/api/cron/reminders` (Vercel Cron or any external cron) |
@@ -53,7 +53,6 @@ _legacy/               # previous HTML/JS/CSS site
 
 1. Open [Firebase Console](https://console.firebase.google.com/) → **Add project**.
 2. Enable **Authentication** → Sign-in methods:
-   - Google
    - Email/Password
 3. Create a **Firestore** database (production mode is fine; rules deploy next).
 4. **Storage is optional** — squad photos are compressed base64 on Firestore (no Storage uploads).

@@ -5,11 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/PageHeader";
 import { ConfigNotice } from "@/components/ConfigNotice";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  registerWithEmail,
-  signInWithEmail,
-  signInWithGoogle,
-} from "@/lib/firebase/auth";
+import { registerWithEmail, signInWithEmail } from "@/lib/firebase/auth";
 
 function LoginForm() {
   const { configured, user, loading } = useAuth();
@@ -28,20 +24,6 @@ function LoginForm() {
   if (!loading && user) {
     router.replace(next);
     return <p className="text-muted">You&apos;re signed in. Redirecting…</p>;
-  }
-
-  async function onGoogle() {
-    setBusy(true);
-    setError("");
-    try {
-      await signInWithGoogle();
-      router.push(next);
-    } catch (err) {
-      console.error(err);
-      setError("Google sign-in failed. Check that Google is enabled in Firebase Auth.");
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function onEmail(e: FormEvent<HTMLFormElement>) {
@@ -73,21 +55,6 @@ function LoginForm() {
 
   return (
     <div className="form-card max-w-md">
-      <button
-        type="button"
-        className="btn-primary mb-4 w-full"
-        disabled={busy}
-        onClick={() => void onGoogle()}
-      >
-        Continue with Google
-      </button>
-
-      <div className="mb-4 flex items-center gap-3 text-sm text-muted">
-        <div className="h-px flex-1 bg-border" />
-        or email
-        <div className="h-px flex-1 bg-border" />
-      </div>
-
       <form onSubmit={(e) => void onEmail(e)}>
         {mode === "register" && (
           <div className="form-row">
@@ -172,7 +139,7 @@ export default function LoginPage() {
       <PageHeader
         kicker="Account"
         title="Sign in"
-        lede="Use Google or email/password. This replaces the old shared passwords for submit and other gated actions."
+        lede="Use email and password. This replaces the old shared passwords for submit and other gated actions."
       />
       <Suspense fallback={<p className="text-muted">Loading…</p>}>
         <LoginForm />
