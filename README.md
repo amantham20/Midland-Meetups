@@ -201,14 +201,12 @@ Point the host env vars at the same `.env` values.
 
 The Apps Script / Sheet stack in `_legacy/` is no longer used by the app.
 
-A spreadsheet export and import script live under **`conversions/`**:
+Spreadsheet export lives under **`conversions/`**. **No service account required** for the usual path:
 
-```bash
-python3 conversions/import_to_firestore.py --dry-run
-python3 conversions/import_to_firestore.py   # needs FIREBASE_SERVICE_ACCOUNT_JSON
-```
+1. `firebase deploy --only firestore:rules`
+2. Sign in as bootstrap admin → **`/admin` → Import spreadsheet seed**
 
-See [`conversions/README.md`](conversions/README.md). New RSVPs still need real Firebase accounts; imported legacy RSVPs use synthetic `legacy_*` user ids.
+That loads `public/seed/midland.json` through your browser session. See [`conversions/README.md`](conversions/README.md).
 
 ## 9. Local development without Firebase
 

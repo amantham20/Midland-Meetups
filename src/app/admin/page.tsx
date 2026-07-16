@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   approveDocument,
   fetchAllForAdmin,
+  importSpreadsheetSeed,
   rejectDocument,
   requestAdminClaim,
   updateEventStatus,
@@ -43,6 +44,7 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [claimBusy, setClaimBusy] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
 
   // Per-event draft state for status editor
   const [statusDrafts, setStatusDrafts] = useState<
@@ -193,10 +195,40 @@ export default function AdminPage() {
     } catch (err) {
       console.error(err);
       setError(
-        "Could not grant admin claim. Set FIREBASE_SERVICE_ACCOUNT_JSON on the server (Firebase Console → Project settings → Service accounts → Generate new private key), keep your UID in NEXT_PUBLIC_ADMIN_UIDS, or set the claim manually: {\"admin\": true}. Note: Firestore rules already allow your bootstrap UID without a claim.",
+        "Could not grant admin claim. Optional — your bootstrap UID already works for approve/import. Service account not required.",
       );
     } finally {
       setClaimBusy(false);
+    }
+  }
+
+  async function runSeedImport() {
+    if (!user) return;
+    if (
+      !window.confirm(
+        "Import the spreadsheet seed (events, memories, squad, RSVPs)? Existing docs with the same IDs will be updated.",
+      )
+    ) {
+      return;
+    }
+    setImportBusy(true);
+    setError(null);
+    setInfo(null);
+    try {
+      const counts = await importSpreadsheetSeed(user.uid);
+      await load();
+      setInfo(
+        `Imported seed: ${counts.events} events, ${counts.memories} memories, ${counts.squad} squad, ${counts.rsvps} RSVPs.`,
+      );
+    } catch (err) {
+      console.error(err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Import failed. Deploy latest firestore.rules so admins can create docs.",
+      );
+    } finally {
+      setImportBusy(false);
     }
   }
 
@@ -285,7 +317,7 @@ export default function AdminPage() {
           </li>
         </ul>
         {!hasAdminClaim && (
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="mb-3 flex flex-wrap items-center gap-3">
             <button
               type="button"
               className="btn-primary"
@@ -295,13 +327,28 @@ export default function AdminPage() {
               {claimBusy ? "Requesting…" : "Request admin claim"}
             </button>
             <p className="text-muted">
-              Optional. Uses the Next.js route{" "}
-              <code className="font-mono text-xs">/api/admin/claim</code> (no
-              Blaze plan). Your UID is already a bootstrap admin in Firestore
-              rules for approve/reject.
+              Optional. Bootstrap UID already works for approve/import without a
+              service account.
             </p>
           </div>
         )}
+
+        <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={importBusy}
+            onClick={() => void runSeedImport()}
+          >
+            {importBusy ? "Importing…" : "Import spreadsheet seed"}
+          </button>
+          <p className="text-muted">
+            Loads{" "}
+            <code className="font-mono text-xs">/seed/midland.json</code> from
+            the app (from the Excel export). No Firebase service account
+            needed — uses your signed-in admin session.
+          </p>
+        </div>
       </div>
 
       {error && (

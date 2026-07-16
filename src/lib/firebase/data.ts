@@ -317,6 +317,96 @@ export async function fetchAllForAdmin(): Promise<{
   };
 }
 
+type SeedPayload = {
+  events: Array<Record<string, unknown> & { id?: string }>;
+  memories: Array<Record<string, unknown> & { id?: string }>;
+  squad: Array<Record<string, unknown> & { id?: string }>;
+  rsvps: Array<Record<string, unknown> & { id?: string }>;
+};
+
+/**
+ * Import spreadsheet seed as the signed-in bootstrap admin (no service account).
+ * Fetches /seed/midland.json and writes via the client SDK (rules must allow isAdmin create).
+ */
+export async function importSpreadsheetSeed(adminUid: string): Promise<{
+  events: number;
+  memories: number;
+  squad: number;
+  rsvps: number;
+}> {
+  const res = await fetch("/seed/midland.json", { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`Could not load seed file (${res.status}).`);
+  }
+  const seed = (await res.json()) as SeedPayload;
+  const db = getClientDb();
+  let events = 0;
+  let memories = 0;
+  let squad = 0;
+  let rsvps = 0;
+
+  for (const row of seed.events || []) {
+    const { id, ...fields } = row;
+    if (!id || !fields.title) continue;
+    await setDoc(
+      doc(db, "events", String(id)),
+      {
+        ...fields,
+        createdBy: fields.createdBy || adminUid,
+        reminderSent: Boolean(fields.reminderSent),
+      },
+      { merge: true },
+    );
+    events += 1;
+  }
+
+  for (const row of seed.memories || []) {
+    const { id, ...fields } = row;
+    if (!id || !fields.title) continue;
+    await setDoc(
+      doc(db, "memories", String(id)),
+      {
+        ...fields,
+        createdBy: fields.createdBy || adminUid,
+      },
+      { merge: true },
+    );
+    memories += 1;
+  }
+
+  for (const row of seed.squad || []) {
+    const { id, ...fields } = row;
+    if (!id || !fields.name) continue;
+    await setDoc(
+      doc(db, "squad", String(id)),
+      {
+        photoBase64: "",
+        photoMimeType: "image/jpeg",
+        ...fields,
+        createdBy: fields.createdBy || adminUid,
+      },
+      { merge: true },
+    );
+    squad += 1;
+  }
+
+  for (const row of seed.rsvps || []) {
+    const { id, ...fields } = row;
+    if (!id || !fields.eventId || !fields.userId) continue;
+    await setDoc(
+      doc(db, "rsvps", String(id)),
+      {
+        ...fields,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+    rsvps += 1;
+  }
+
+  return { events, memories, squad, rsvps };
+}
+
 /**
  * Grant admin custom claim via Next.js API (no Firebase Cloud Functions / Blaze).
  * Requires server FIREBASE_SERVICE_ACCOUNT_JSON and a signed-in bootstrap UID.

@@ -1,0 +1,339 @@
+{
+  "events": [
+    {
+      "id": "evt-1783369904187",
+      "title": "Movie Night",
+      "host": "Kait",
+      "date": "2026-07-08",
+      "time": "21:30",
+      "location": "Live Oak Eastside",
+      "description": "BYOS (bring your own snacks), lawn chair recommended, possibly bug spray and maybe a comfy blanket, please no alc at Live Oak. Movie is Project Hail Mary",
+      "status": "confirmed",
+      "statusNote": "",
+      "approved": false,
+      "reminderSent": false
+    },
+    {
+      "id": "evt-1783384785202",
+      "title": "Fire at Ryan's Place",
+      "host": "Ryan P",
+      "date": "2026-07-09",
+      "time": "21:30",
+      "location": "411 W Main Street",
+      "description": "BYO Chair and Drink (limited supplies available if needed)",
+      "status": "confirmed",
+      "statusNote": "",
+      "approved": true,
+      "reminderSent": false
+    },
+    {
+      "id": "evt-1783799205491",
+      "title": "7/11 Day!!!",
+      "host": "Ryan",
+      "date": "2026-07-11",
+      "time": "17:30",
+      "location": "7/11 and then Downtown",
+      "description": "We’re grabbing free slurpies at 7/11 and then wandering around downtown/main street!",
+      "status": "confirmed",
+      "statusNote": "",
+      "approved": true,
+      "reminderSent": false
+    },
+    {
+      "id": "evt-1783879749385",
+      "title": "Movie Night at Ryan’s",
+      "host": "Ryan P",
+      "date": "2026-07-15",
+      "time": "21:00",
+      "location": "411 W Main street",
+      "description": "Movie: The Map to Tiny Perfect Things \n\nParking across the street or in front of Santa house.\n\nPopcorn and sparkling water available!",
+      "status": "confirmed",
+      "statusNote": "",
+      "approved": true,
+      "reminderSent": false
+    },
+    {
+      "id": "evt-1783879896030",
+      "title": "Game Night at Nord!!!",
+      "host": "Ryan P",
+      "date": "2026-07-13",
+      "time": "21:00",
+      "location": "Nord Social",
+      "description": "A tried and true classic. We’ll play hues and cues or Catan depending on how many people show up. \n\nMocktail menu is fantastic for non-drinkers!",
+      "status": "confirmed",
+      "statusNote": "",
+      "approved": true,
+      "reminderSent": false
+    }
+  ],
+  "memories": [
+    {
+      "id": "mem-1783369535563",
+      "title": "Drunks Can't Bike",
+      "author": "Ryan P",
+      "date": "2026-07-06",
+      "text": "While hanging out downtown we found a guy BLACKOUT drunk attempting to bike home. After he ran into a lamp and a building we followed him down main street and eventually called the police to check on him LOL",
+      "approved": true
+    },
+    {
+      "id": "mem-1783479764608",
+      "title": "Tunnel of Fireflies",
+      "author": "Ryan P",
+      "date": "2026-07-07",
+      "text": "While biking/longboarding back to my place from cottage creamery Aman and I saw more fireflies than I’ve ever seen in one place. We forgot to bring lights which ended up being great because we could see hundreds of fireflies all down the rail trail. Truly mesmerizing!",
+      "approved": true
+    }
+  ],
+  "squad": [
+    {
+      "id": "sqd-1783383527529",
+      "name": "Ryan Pelletier",
+      "occupation": "King and Part-Time Barista",
+      "age": "24",
+      "gender": "He/Him",
+      "socialLink": "https://www.instagram.com/ryan.pelletier/",
+      "bio": "Basically the coolest guy ever",
+      "photoUrl": "https://lh3.googleusercontent.com/d/1whU9_oUCcRIBhvRzfjRD_oV_qgoUedea",
+      "photoBase64": "",
+      "photoMimeType": "image/jpeg",
+      "approved": true
+    },
+    {
+      "id": "sqd-1783391042480",
+      "name": "Brian M",
+      "occupation": "Videographer and Barista/Roaster",
+      "age": "31",
+      "gender": "He/Him",
+      "socialLink": "",
+      "bio": "I like to take videos and do real estate photography as well as roasting coffee for live oak!",
+      "photoUrl": "https://lh3.googleusercontent.com/d/1Xw99HPUUZBFS7pmusGxKbYL05JIQ1QTY",
+      "photoBase64": "",
+      "photoMimeType": "image/jpeg",
+      "approved": true
+    },
+    {
+      "id": "sqd-1783391591078",
+      "name": "Aman T",
+      "occupation": "Unknown Computer Job",
+      "age": "23",
+      "gender": "U/S/A",
+      "socialLink": "",
+      "bio": "Person who drives a Tesla\n\nSmart, dark, tall, handsome.\n\nGreat with the ladies 🔥",
+      "photoUrl": "https://lh3.googleusercontent.com/d/1aYCPbQSp_l3zdc5uOUhaO7FLzkFHpcNW",
+      "photoBase64": "",
+      "photoMimeType": "image/jpeg",
+      "approved": true
+    },
+    {
+      "id": "sqd-1783391608453",
+      "name": "Katie",
+      "occupation": "Pantry Manager",
+      "age": "23",
+      "gender": "She/Her",
+      "socialLink": "",
+      "bio": "I love sunsets and long walks on the beach!",
+      "photoUrl": "https://lh3.googleusercontent.com/d/1JfCSGQtvf71zqnXmGuk1VKaUVjUFVNWU",
+      "photoBase64": "",
+      "photoMimeType": "image/jpeg",
+      "approved": true
+    },
+    {
+      "id": "sqd-1783391928349",
+      "name": "Abhi",
+      "occupation": "Professionally Unemployed 😎",
+      "age": "24",
+      "gender": "He/Him",
+      "socialLink": "https://www.instagram.com/abhib4000?igsh=NWN0N3VrYjh3anA%3D&utm_source=qr",
+      "bio": "Ryan Pelletier’s best day of his life was the day he met me 😎",
+      "photoUrl": "https://lh3.googleusercontent.com/d/1YIl5w2S2fR_yd7mP1vTch6d2t1j1nIds",
+      "photoBase64": "",
+      "photoMimeType": "image/jpeg",
+      "approved": true
+    },
+    {
+      "id": "sqd-1783392506321",
+      "name": "Ralph",
+      "occupation": "Chemical Engineer",
+      "age": "24",
+      "gender": "He/Him",
+      "socialLink": "",
+      "bio": "The King of Bar Crawl Planning",
+      "photoUrl": "https://lh3.googleusercontent.com/d/1dVMmA6ro6BrwLuySQY1qAt0_gfJX9zx4",
+      "photoBase64": "",
+      "photoMimeType": "image/jpeg",
+      "approved": true
+    },
+    {
+      "id": "sqd-1783394633140",
+      "name": "Liz S",
+      "occupation": "Financial Advisor / Security on the Weekends",
+      "age": "22",
+      "gender": "Female",
+      "socialLink": "https://www.facebook.com/share/1D7v7DYeBo/?mibextid=wwXIfr",
+      "bio": "Introvert that loves a spontaneous adventure",
+      "photoUrl": "https://lh3.googleusercontent.com/d/1v8GlNFgfld30uXTNZy6767TrTwTHsyMB",
+      "photoBase64": "",
+      "photoMimeType": "image/jpeg",
+      "approved": true
+    },
+    {
+      "id": "sqd-1783436464518",
+      "name": "Kait",
+      "occupation": "Writer, TedX Speaker, and Live Oak Director",
+      "age": "26",
+      "gender": "Woman",
+      "socialLink": "",
+      "bio": "I am running the Chicago marathon in October, I am a TikTok influencer, and I am finishing my masters in Clinical Mental Health Counseling!",
+      "photoUrl": "https://lh3.googleusercontent.com/d/1K3rmqN7GUADUaa8aJsrPXsrifA5dRnol",
+      "photoBase64": "",
+      "photoMimeType": "image/jpeg",
+      "approved": true
+    },
+    {
+      "id": "sqd-1783437032716",
+      "name": "Cooper",
+      "occupation": "Software Developer",
+      "age": "24",
+      "gender": "he/him",
+      "socialLink": "https://boxd.it/63sj7",
+      "bio": "Have approx. 3000 hobbies and the time management skills to fit 0 of them into my day",
+      "photoUrl": "https://lh3.googleusercontent.com/d/1ADVzUR-m0yLWZ8pXQypD8S4IG55Q6Xwh",
+      "photoBase64": "",
+      "photoMimeType": "image/jpeg",
+      "approved": true
+    },
+    {
+      "id": "sqd-1783455267364",
+      "name": "Lauren",
+      "occupation": "Barista extraordinaire ✨",
+      "age": "23",
+      "gender": "she/her",
+      "socialLink": "",
+      "bio": "Matcha enthusiast and professional trinket collector 😌",
+      "photoUrl": "https://lh3.googleusercontent.com/d/1QXxCd6jtQPDdvT-5IaLy6keQDFIabmSk",
+      "photoBase64": "",
+      "photoMimeType": "image/jpeg",
+      "approved": true
+    },
+    {
+      "id": "sqd-1783455436492",
+      "name": "Ash",
+      "occupation": "Semi Pro (?) Counter-Strike Player and Keeper of the Cold Brew",
+      "age": "23",
+      "gender": "She/They",
+      "socialLink": "https://www.instagram.com/skrunklee_?igsh=enp3Zzdhb2RvaXhh&utm_source=qr",
+      "bio": "think i spend more time with my cat than real life people 🥀",
+      "photoUrl": "https://lh3.googleusercontent.com/d/1I6nN9YK-TtCS_Yjwk6CceY2m_oS2gOqp",
+      "photoBase64": "",
+      "photoMimeType": "image/jpeg",
+      "approved": true
+    }
+  ],
+  "rsvps": [
+    {
+      "id": "legacy_ryan-p_evt-1783369904187",
+      "eventId": "evt-1783369904187",
+      "userId": "legacy_ryan-p",
+      "name": "Ryan P",
+      "status": "going"
+    },
+    {
+      "id": "legacy_libby_evt-1783369904187",
+      "eventId": "evt-1783369904187",
+      "userId": "legacy_libby",
+      "name": "Libby",
+      "status": "not-going"
+    },
+    {
+      "id": "legacy_aman-dhruva-thamminana_evt-1783369904187",
+      "eventId": "evt-1783369904187",
+      "userId": "legacy_aman-dhruva-thamminana",
+      "name": "Aman Dhruva Thamminana",
+      "status": "going"
+    },
+    {
+      "id": "legacy_lauren_evt-1783369904187",
+      "eventId": "evt-1783369904187",
+      "userId": "legacy_lauren",
+      "name": "Lauren :)",
+      "status": "going"
+    },
+    {
+      "id": "legacy_ryan-p_evt-1783384785202",
+      "eventId": "evt-1783384785202",
+      "userId": "legacy_ryan-p",
+      "name": "Ryan P",
+      "status": "going"
+    },
+    {
+      "id": "legacy_katie_evt-1783369904187",
+      "eventId": "evt-1783369904187",
+      "userId": "legacy_katie",
+      "name": "Katie",
+      "status": "going"
+    },
+    {
+      "id": "legacy_katie_evt-1783384785202",
+      "eventId": "evt-1783384785202",
+      "userId": "legacy_katie",
+      "name": "Katie",
+      "status": "going"
+    },
+    {
+      "id": "legacy_liz_evt-1783369904187",
+      "eventId": "evt-1783369904187",
+      "userId": "legacy_liz",
+      "name": "Liz",
+      "status": "going"
+    },
+    {
+      "id": "legacy_chloe_evt-1783369904187",
+      "eventId": "evt-1783369904187",
+      "userId": "legacy_chloe",
+      "name": "Chloe",
+      "status": "going"
+    },
+    {
+      "id": "legacy_chloe_evt-1783384785202",
+      "eventId": "evt-1783384785202",
+      "userId": "legacy_chloe",
+      "name": "Chloe",
+      "status": "going"
+    },
+    {
+      "id": "legacy_cooper_evt-1783369904187",
+      "eventId": "evt-1783369904187",
+      "userId": "legacy_cooper",
+      "name": "Cooper",
+      "status": "going"
+    },
+    {
+      "id": "legacy_abhi_evt-1783384785202",
+      "eventId": "evt-1783384785202",
+      "userId": "legacy_abhi",
+      "name": "Abhi",
+      "status": "going"
+    },
+    {
+      "id": "legacy_aman-dhruva-thamminana_evt-1783384785202",
+      "eventId": "evt-1783384785202",
+      "userId": "legacy_aman-dhruva-thamminana",
+      "name": "Aman Dhruva Thamminana",
+      "status": "going"
+    },
+    {
+      "id": "legacy_guest_evt-1783879896030",
+      "eventId": "evt-1783879896030",
+      "userId": "legacy_guest",
+      "name": "😐",
+      "status": "going"
+    },
+    {
+      "id": "legacy_aman_evt-1783879896030",
+      "eventId": "evt-1783879896030",
+      "userId": "legacy_aman",
+      "name": "Aman",
+      "status": "going"
+    }
+  ]
+}

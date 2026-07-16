@@ -7,31 +7,38 @@ One-off migration assets from the legacy Google Sheet / Apps Script stack.
 | Path | Purpose |
 |------|---------|
 | `Midland Meetups Database.xlsx` | Export of Events, Squad, Memories, RSVPs (sanitized) |
-| `import_to_firestore.py` | Load that workbook into Firestore |
+| `seed.json` | Same data as JSON (used by Admin → Import) |
+| `import_to_firestore.py` | Optional CLI import if you later add a service account |
 
-**Not imported (intentionally removed from the workbook):**
+**Removed from the workbook:** Chat, Scores, WalterProgress (games/chat dropped; progress had passwords).
 
-- `Chat` — removed from the product
-- `Scores` / `WalterProgress` — games removed; progress sheet had plaintext passwords
+---
 
-## Import into Firestore
+## Recommended: import in the browser (no service account)
+
+1. Deploy latest **Firestore rules** (admins may create docs):
+   ```bash
+   firebase deploy --only firestore:rules
+   ```
+2. Sign in on the site with your bootstrap admin account.
+3. Open **`/admin`** → **Import spreadsheet seed**.
+
+That writes events, memories, squad, and legacy RSVPs using your signed-in session.  
+Seed file served by the app: `public/seed/midland.json` (copied from `seed.json`).
+
+---
+
+## Optional: Python + service account
+
+Only if you want a CLI path later. Create a key under  
+Firebase Console → Project settings → Service accounts → **Generate new private key**  
+(Spark plan is fine; this is not Cloud Functions / Blaze).
 
 ```bash
-# from repo root
 pip install openpyxl firebase-admin
-
-# service account JSON (Firebase Console → Project settings → Service accounts)
 export FIREBASE_SERVICE_ACCOUNT_JSON="$(cat /path/to/serviceAccount.json)"
-
-# preview
 python3 conversions/import_to_firestore.py --dry-run
-
-# write
 python3 conversions/import_to_firestore.py
 ```
 
-Docs are written with `merge=True` and prefer the spreadsheet `id` columns (`evt-…`, `sqd-…`, `mem-…`) so re-running the script updates the same rows.
-
-Legacy RSVPs use synthetic `userId` values like `legacy_ryan-p` so they appear in the directory without Firebase Auth accounts. New RSVPs from the app still use real Auth UIDs.
-
-Squad rows keep `photoUrl` (Drive / Googleusercontent links). The app prefers `photoBase64` when present, and falls back to `photoUrl`.
+Legacy RSVPs use synthetic `userId` values like `legacy_ryan-p`. New RSVPs from the app still use real Auth UIDs.
