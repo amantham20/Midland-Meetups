@@ -87,9 +87,7 @@ export default function HappeningsPage() {
         lede="Everything on the books between now and next week. Tap any card for the full details, host info, and to let people know if you're going."
       />
 
-      <div className="mb-6">
-        <EnableNotifications />
-      </div>
+      <EnableNotifications />
 
       {tickerUpdates.length > 0 && (
         <div className="mb-6 overflow-hidden rounded-md border border-border bg-surface">
