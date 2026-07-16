@@ -201,12 +201,14 @@ Point the host env vars at the same `.env` values.
 
 The Apps Script / Sheet stack in `_legacy/` is no longer used by the app.
 
-Suggested cutover:
+A spreadsheet export and import script live under **`conversions/`**:
 
-1. Export each Sheet tab to CSV.
-2. Write a one-off import script (or use the console) to create Firestore docs with `approved: true` for already-public rows.
-3. Re-upload squad photos into Storage if Drive links should not be permanent.
-4. Tell the crew to create real accounts (RSVPs are now per Firebase user, not free-text name only).
+```bash
+python3 conversions/import_to_firestore.py --dry-run
+python3 conversions/import_to_firestore.py   # needs FIREBASE_SERVICE_ACCOUNT_JSON
+```
+
+See [`conversions/README.md`](conversions/README.md). New RSVPs still need real Firebase accounts; imported legacy RSVPs use synthetic `legacy_*` user ids.
 
 ## 9. Local development without Firebase
 
