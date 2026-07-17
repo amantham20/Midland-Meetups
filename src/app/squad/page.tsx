@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type FormEvent,
+} from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { ConfigNotice } from "@/components/ConfigNotice";
@@ -25,11 +31,22 @@ import {
 } from "@/lib/photoCache";
 import { resizeImageToBase64 } from "@/lib/utils";
 
+function subscribeNothing() {
+  return () => {};
+}
+const clientTrue = () => true;
+const serverFalse = () => false;
+
 export default function SquadPage() {
   const { user, configured } = useAuth();
   const toast = useToast();
-  // Keep SSR + first client paint identical — sessionStorage is client-only and
-  // must not seed useState (that caused article vs col-span-full hydration mismatches).
+  // false during SSR + hydration, true after — keeps list markup identical
+  // even if Fast Refresh or client state already has members.
+  const mounted = useSyncExternalStore(
+    subscribeNothing,
+    clientTrue,
+    serverFalse,
+  );
   const [members, setMembers] = useState<SquadMember[]>([]);
   const [loading, setLoading] = useState(() => isFirebaseConfigured());
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +61,6 @@ export default function SquadPage() {
 
   useEffect(() => {
     if (!isFirebaseConfigured()) return;
-    // Apply list cache after mount so hydration stays in sync with the server.
     const cached = readSquadListCache<SquadMember[]>();
     if (cached?.length) {
       lastKeyRef.current = membersContentKey(cached);
@@ -216,6 +232,11 @@ export default function SquadPage() {
       ? groupsForEmail(groups, myProfile?.email || user?.email)
       : [];
 
+  // SSR + hydration always show the loading shell; real list only after mount.
+  const listLoading = !mounted || loading;
+  const listError = mounted ? error : null;
+  const listMembers = mounted ? members : [];
+
   return (
     <>
       <PageHeader
@@ -228,43 +249,49 @@ export default function SquadPage() {
         className="mb-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
         aria-label="Squad members"
       >
-        {loading && (
+        {listLoading && (
           <div className="col-span-full">
             <EmptyNote>Loading the squad…</EmptyNote>
           </div>
         )}
-        {error && (
+        {listError && (
           <div className="col-span-full">
-            <EmptyNote>{error}</EmptyNote>
+            <EmptyNote>{listError}</EmptyNote>
           </div>
         )}
-        {!loading && !error && members.length === 0 && (
+        {!listLoading && !listError && listMembers.length === 0 && (
           <div className="col-span-full">
             <EmptyNote>
               No profiles yet — be the first to join the squad below.
             </EmptyNote>
           </div>
         )}
-        {members.map((m) => (
+        {listMembers.map((m) => (
           <article
             key={m.id}
-            className="rounded-lg border border-border bg-surface p-5 shadow-sm"
+            className="flex flex-col items-center rounded-lg border border-border bg-surface p-5 text-center shadow-sm"
           >
-            <SquadPhoto member={m} />
-            <h3 className="font-display text-lg font-bold text-ink">{m.name}</h3>
-            <div className="text-sm font-medium text-muted">{m.occupation}</div>
+            <SquadPhoto member={m} sizeClass="mb-4 h-28 w-28 mx-auto" />
+            <h3 className="w-full font-display text-lg font-bold text-ink">
+              {m.name}
+            </h3>
+            <div className="w-full text-sm font-medium text-muted">
+              {m.occupation}
+            </div>
             {(m.age || m.gender) && (
-              <div className="mt-1 text-sm text-muted">
+              <div className="mt-1 w-full text-sm text-muted">
                 {[m.age, m.gender].filter(Boolean).join(" · ")}
               </div>
             )}
-            <p className="mt-3 text-sm leading-relaxed text-ink/85">{m.bio}</p>
+            <p className="mt-3 w-full text-sm leading-relaxed text-ink/85">
+              {m.bio}
+            </p>
             {m.socialLink && (
               <a
                 href={m.socialLink}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-blue hover:text-blue-ink"
+                className="mt-3 inline-flex items-center justify-center gap-1.5 text-sm font-semibold text-blue hover:text-blue-ink"
               >
                 {Icons.link} Follow
               </a>
