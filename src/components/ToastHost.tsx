@@ -63,16 +63,22 @@ function subscribeNothing() {
   return () => {};
 }
 
+/** Stable server snapshot — inline `() => []` creates a new array every call and loops. */
+const EMPTY_TOASTS: ToastItem[] = [];
+const getServerToasts = () => EMPTY_TOASTS;
+const getClientTrue = () => true;
+const getServerFalse = () => false;
+
 /**
  * Renders toasts into document.body via portal so layout/z-index never hide them.
  */
 export function ToastHost() {
-  const toasts = useSyncExternalStore(subscribeToasts, getToasts, () => []);
+  const toasts = useSyncExternalStore(subscribeToasts, getToasts, getServerToasts);
   // false on server, true on client — avoids hydration mismatch for portal
   const isClient = useSyncExternalStore(
     subscribeNothing,
-    () => true,
-    () => false,
+    getClientTrue,
+    getServerFalse,
   );
 
   if (!isClient || toasts.length === 0 || typeof document === "undefined") {

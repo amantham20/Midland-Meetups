@@ -7,17 +7,20 @@ import {
   updateProfile,
   type User,
 } from "firebase/auth";
-import { getClientAuth } from "./client";
+import { ensureAuthPersistence, getClientAuth } from "./client";
+import { clearAuthSession, touchAuthSession } from "@/lib/authSession";
 
 export async function signInWithEmail(
   email: string,
   password: string,
 ): Promise<User> {
+  await ensureAuthPersistence();
   const result = await signInWithEmailAndPassword(
     getClientAuth(),
     email,
     password,
   );
+  touchAuthSession();
   return result.user;
 }
 
@@ -26,6 +29,7 @@ export async function registerWithEmail(
   password: string,
   displayName: string,
 ): Promise<User> {
+  await ensureAuthPersistence();
   const result = await createUserWithEmailAndPassword(
     getClientAuth(),
     email,
@@ -34,9 +38,11 @@ export async function registerWithEmail(
   if (displayName.trim()) {
     await updateProfile(result.user, { displayName: displayName.trim() });
   }
+  touchAuthSession();
   return result.user;
 }
 
 export async function signOut(): Promise<void> {
+  clearAuthSession();
   await firebaseSignOut(getClientAuth());
 }

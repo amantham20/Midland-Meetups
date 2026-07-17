@@ -1,18 +1,28 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { ConfigNotice } from "@/components/ConfigNotice";
+import { TagPicker } from "@/components/TagChips";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/lib/toast-store";
-import { submitEvent } from "@/lib/firebase/data";
+import { submitEvent, subscribeGroups } from "@/lib/firebase/data";
+import { isFirebaseConfigured } from "@/lib/firebase/client";
+import type { AudienceGroup } from "@/lib/types";
 import { formatTimeDisplay } from "@/lib/utils";
 
 export default function SubmitPage() {
   const { user, loading, configured } = useAuth();
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
+  const [groups, setGroups] = useState<AudienceGroup[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!isFirebaseConfigured() || !user) return;
+    return subscribeGroups(setGroups, (err) => console.error(err));
+  }, [user]);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -23,7 +33,6 @@ export default function SubmitPage() {
     const form = e.currentTarget;
     const fd = new FormData(form);
     const timeRaw = String(fd.get("time") || "");
-    // Convert HH:MM from <input type="time"> to a readable display string
     const time = timeRaw ? formatTimeDisplay(timeRaw) : timeRaw;
 
     setSaving(true);
@@ -38,15 +47,18 @@ export default function SubmitPage() {
         location: String(fd.get("location") || "").trim(),
         description: String(fd.get("description") || "").trim(),
         userId: user.uid,
+        tags,
       });
       form.reset();
+      setTags([]);
       const msg =
         "Event submitted! It'll show on the board once it's approved.";
       setStatus(msg);
       toast.success(msg);
     } catch (err) {
       console.error(err);
-      const msg = "Couldn't submit that event. Check your connection and try again.";
+      const msg =
+        "Couldn't submit that event. Check your connection and try again.";
       setStatus(msg);
       toast.error(msg);
     } finally {
@@ -72,7 +84,7 @@ export default function SubmitPage() {
       <PageHeader
         kicker="Got an idea?"
         title="Submit an Event"
-        lede="Fill this out and it'll go to the organizer for review before it hits the board. Sign-in replaces the old shared password."
+        lede="Fill this out and it'll go to the organizer for review. Optionally limit the audience to specific groups (by email)."
       />
 
       {loading ? (
@@ -119,13 +131,25 @@ export default function SubmitPage() {
               <label className="field-label" htmlFor="date">
                 Date
               </label>
-              <input className="field" id="date" name="date" type="date" required />
+              <input
+                className="field"
+                id="date"
+                name="date"
+                type="date"
+                required
+              />
             </div>
             <div>
               <label className="field-label" htmlFor="time">
                 Time
               </label>
-              <input className="field" id="time" name="time" type="time" required />
+              <input
+                className="field"
+                id="time"
+                name="time"
+                type="time"
+                required
+              />
             </div>
           </div>
           <div className="form-row">
@@ -151,6 +175,15 @@ export default function SubmitPage() {
               name="description"
               required
               placeholder="What's the plan, what to bring, anything people should know."
+            />
+          </div>
+          <div className="form-row">
+            <div className="field-label">Audience groups</div>
+            <TagPicker
+              groups={groups}
+              selected={tags}
+              onChange={setTags}
+              idPrefix="submit-tag"
             />
           </div>
           <button type="submit" className="btn-primary" disabled={saving}>

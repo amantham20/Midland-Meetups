@@ -11,17 +11,20 @@ import { EnableNotifications } from "@/components/EnableNotifications";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   subscribeApprovedEvents,
+  subscribeGroups,
   subscribeRsvps,
 } from "@/lib/firebase/data";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
-import type { MeetupEvent, Rsvp } from "@/lib/types";
+import type { AudienceGroup, MeetupEvent, Rsvp } from "@/lib/types";
 import { STATUS_LABEL } from "@/lib/types";
+import { filterEventsForViewer, groupNameMap } from "@/lib/audience";
 import { isWithinNextWeek } from "@/lib/utils";
 
 export default function HappeningsPage() {
-  const { user, configured } = useAuth();
+  const { user, configured, isAdmin } = useAuth();
   const [events, setEvents] = useState<MeetupEvent[]>([]);
   const [rsvps, setRsvps] = useState<Rsvp[]>([]);
+  const [groups, setGroups] = useState<AudienceGroup[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(() => isFirebaseConfigured());
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -36,26 +39,40 @@ export default function HappeningsPage() {
       },
       (err) => {
         console.error(err);
-        setError("Couldn't load events. Check your connection and Firestore rules.");
+        setError(
+          "Couldn't load events. Check your connection and Firestore rules.",
+        );
         setLoading(false);
       },
     );
-    const unsubRsvps = subscribeRsvps(
-      setRsvps,
-      (err) => console.error(err),
-    );
+    const unsubRsvps = subscribeRsvps(setRsvps, (err) => console.error(err));
     return () => {
       unsubEvents();
       unsubRsvps();
     };
   }, []);
 
+  useEffect(() => {
+    if (!isFirebaseConfigured() || !user) return;
+    return subscribeGroups(setGroups, (err) => console.error(err));
+  }, [user]);
+
+  const visibleEvents = useMemo(
+    () =>
+      filterEventsForViewer(events, {
+        userEmail: user?.email,
+        isAdmin,
+        groups,
+      }),
+    [events, user?.email, isAdmin, groups],
+  );
+
   const weekEvents = useMemo(
     () =>
-      events
+      visibleEvents
         .filter((e) => isWithinNextWeek(e.date))
         .sort((a, b) => a.date.localeCompare(b.date)),
-    [events],
+    [visibleEvents],
   );
 
   const tickerUpdates = useMemo(
@@ -64,7 +81,8 @@ export default function HappeningsPage() {
     [weekEvents],
   );
 
-  const selected = events.find((e) => e.id === selectedId) || null;
+  const tagLabels = useMemo(() => groupNameMap(groups), [groups]);
+  const selected = visibleEvents.find((e) => e.id === selectedId) || null;
 
   if (!configured) {
     return (
@@ -84,7 +102,7 @@ export default function HappeningsPage() {
       <PageHeader
         kicker="Next 7 days"
         title="Happenings This Week"
-        lede="Everything on the books between now and next week. Tap any card for the full details, host info, and to let people know if you're going."
+        lede="Everything on the books between now and next week. Tagged events only show if your email is in that group (or you're an admin)."
       />
 
       <EnableNotifications />
@@ -104,15 +122,17 @@ export default function HappeningsPage() {
       )}
 
       {loading && <EmptyNote>Loading the week…</EmptyNote>}
-      {error && (
-        <EmptyNote>
-          {error}
-        </EmptyNote>
-      )}
+      {error && <EmptyNote>{error}</EmptyNote>}
       {!loading && !error && weekEvents.length === 0 && (
         <EmptyNote>
-          Nothing on the board for the next 7 days.{" "}
-          <Link href="/submit" className="font-semibold text-blue hover:underline">
+          Nothing on the board for the next 7 days
+          {!user
+            ? " (sign in to see tagged group events)."
+            : "."}{" "}
+          <Link
+            href="/submit"
+            className="font-semibold text-blue hover:underline"
+          >
             Submit an event
           </Link>{" "}
           to get something posted.
@@ -130,6 +150,7 @@ export default function HappeningsPage() {
             rsvps={rsvps}
             myUserId={user?.uid}
             onOpen={setSelectedId}
+            tagLabels={tagLabels}
           />
         ))}
       </section>

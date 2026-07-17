@@ -44,16 +44,40 @@ service cloud.firestore {
     }
 
     match /squad/{memberId} {
+      function squadEmailMatches() {
+        return signedIn()
+          && request.auth.token.email is string
+          && resource.data.email is string
+          && resource.data.email == request.auth.token.email.lower();
+      }
+
+      function ownsSquad() {
+        return signedIn() && (
+          resource.data.createdBy == request.auth.uid
+          || squadEmailMatches()
+        );
+      }
+
       allow read: if resource.data.approved == true || isAdmin()
-        || (signedIn() && resource.data.createdBy == request.auth.uid);
+        || (signedIn() && resource.data.createdBy == request.auth.uid)
+        || squadEmailMatches();
+
       // Photos are compressed base64 on the document (no Cloud Storage).
-      // Soft size guard: ~350k chars base64 ≈ under Firestore's 1 MiB doc limit with other fields.
       allow create: if signedIn()
         && request.resource.data.approved == false
         && request.resource.data.createdBy == request.auth.uid
         && (!('photoBase64' in request.resource.data)
             || request.resource.data.photoBase64.size() < 350000);
-      allow update, delete: if isAdmin();
+
+      // Admins: full edit. Owners (by uid or matching email): edit profile but not approval.
+      allow update: if isAdmin()
+        || (ownsSquad()
+          && request.resource.data.approved == resource.data.approved
+          && request.resource.data.createdBy == request.auth.uid
+          && (!('photoBase64' in request.resource.data)
+              || request.resource.data.photoBase64.size() < 350000));
+
+      allow delete: if isAdmin();
     }
 
     match /rsvps/{rsvpId} {
@@ -72,6 +96,13 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid;
       allow delete: if signedIn()
         && resource.data.userId == request.auth.uid;
+    }
+
+    // Audience groups (tags): emails → who can see tagged events.
+    // Signed-in users read so the client can filter; only admins write.
+    match /groups/{groupId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
     }
   }
 }

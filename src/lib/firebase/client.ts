@@ -1,5 +1,10 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
-import { getAuth, type Auth } from "firebase/auth";
+import {
+  getAuth,
+  setPersistence,
+  browserLocalPersistence,
+  type Auth,
+} from "firebase/auth";
 import {
   initializeFirestore,
   getFirestore,
@@ -36,8 +41,29 @@ function getFirebaseApp(): FirebaseApp {
   return getApps().length ? getApp() : initializeApp(firebaseConfig);
 }
 
+let authPersistenceReady: Promise<Auth> | null = null;
+
+/**
+ * Auth with browser local persistence so sessions survive restarts
+ * (paired with a 100-day sliding activity window in AuthContext).
+ */
 export function getClientAuth(): Auth {
-  return getAuth(getFirebaseApp());
+  const auth = getAuth(getFirebaseApp());
+  if (typeof window !== "undefined" && !authPersistenceReady) {
+    authPersistenceReady = setPersistence(auth, browserLocalPersistence)
+      .then(() => auth)
+      .catch((err) => {
+        console.warn("Could not set auth persistence", err);
+        return auth;
+      });
+  }
+  return auth;
+}
+
+/** Await this after first paint if you need persistence guaranteed. */
+export function ensureAuthPersistence(): Promise<Auth> {
+  const auth = getClientAuth();
+  return authPersistenceReady || Promise.resolve(auth);
 }
 
 /**

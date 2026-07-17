@@ -66,8 +66,13 @@ export default function RootLayout({
     <html
       lang="en"
       className={`h-full ${inter.variable} ${spaceGrotesk.variable} ${jetbrains.variable}`}
+      suppressHydrationWarning
     >
-      <body className="flex min-h-full flex-col font-sans antialiased">
+      {/* suppressHydrationWarning: browser extensions (Grammarly, etc.) inject attrs on html/body */}
+      <body
+        className="flex min-h-full flex-col font-sans antialiased"
+        suppressHydrationWarning
+      >
         <AuthProvider>
           <ToastProvider>
             <Header />

@@ -10,7 +10,16 @@ import {
   type ReactNode,
 } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { getClientAuth, isFirebaseConfigured } from "@/lib/firebase/client";
+import {
+  ensureAuthPersistence,
+  getClientAuth,
+  isFirebaseConfigured,
+} from "@/lib/firebase/client";
+import {
+  clearAuthSession,
+  isAuthSessionValid,
+  touchAuthSession,
+} from "@/lib/authSession";
 import { isAdminUid } from "@/lib/utils";
 
 interface AuthContextValue {
@@ -41,7 +50,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const configured = isFirebaseConfigured();
   const [user, setUser] = useState<User | null>(null);
   const [hasAdminClaim, setHasAdminClaim] = useState(false);
-  // If Firebase isn't configured, there's nothing to wait for.
   const [loading, setLoading] = useState(configured);
 
   const loadClaims = useCallback(async (u: User | null, forceRefresh = false) => {
@@ -60,12 +68,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!configured) return;
-    const unsub = onAuthStateChanged(getClientAuth(), (u) => {
-      setUser(u);
-      void loadClaims(u).finally(() => setLoading(false));
-    });
-    return unsub;
+    let unsub = () => {};
+
+    void (async () => {
+      await ensureAuthPersistence();
+      unsub = onAuthStateChanged(getClientAuth(), (u) => {
+        void (async () => {
+          if (u) {
+            // Sliding 100-day activity window
+            if (!isAuthSessionValid()) {
+              clearAuthSession();
+              try {
+                await getClientAuth().signOut();
+              } catch (err) {
+                console.error(err);
+              }
+              setUser(null);
+              setHasAdminClaim(false);
+              setLoading(false);
+              return;
+            }
+            touchAuthSession();
+            // Refresh ID token so refresh-token keeps the session warm
+            try {
+              await u.getIdToken(false);
+            } catch {
+              // ignore; next request may reauth
+            }
+          } else {
+            clearAuthSession();
+          }
+          setUser(u);
+          await loadClaims(u);
+          setLoading(false);
+        })();
+      });
+    })();
+
+    return () => unsub();
   }, [configured, loadClaims]);
+
+  // Keep session warm while the tab is open / focused
+  useEffect(() => {
+    if (!user) return;
+    const bump = () => touchAuthSession();
+    const onFocus = () => {
+      touchAuthSession();
+      void user.getIdToken(false).catch(() => {});
+    };
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("pointerdown", bump);
+    // Bump once a day while the tab stays open
+    const interval = window.setInterval(bump, 24 * 60 * 60 * 1000);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("pointerdown", bump);
+      window.clearInterval(interval);
+    };
+  }, [user]);
 
   const refreshClaims = useCallback(async () => {
     const current = getClientAuth().currentUser;
@@ -73,11 +133,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setHasAdminClaim(false);
       return;
     }
+    touchAuthSession();
     await loadClaims(current, true);
   }, [loadClaims]);
 
   const isAdminListed = isAdminUid(user?.uid);
-  // Show Admin nav/page if either path grants access so organizers can finish bootstrap.
   const isAdmin = isAdminListed || hasAdminClaim;
 
   const value = useMemo(

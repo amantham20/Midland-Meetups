@@ -17,6 +17,7 @@ import {
 } from "firebase/firestore";
 import { getClientDb } from "./client";
 import type {
+  AudienceGroup,
   MeetupEvent,
   Memory,
   Rsvp,
@@ -25,6 +26,12 @@ import type {
   EventStatus,
 } from "../types";
 import { membersContentKey, writeSquadListCache } from "../photoCache";
+import { normalizeEmail, slugifyGroupName } from "../audience";
+
+function mapTags(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((t) => String(t).trim()).filter(Boolean);
+}
 
 function mapEvent(id: string, data: Record<string, unknown>): MeetupEvent {
   return {
@@ -38,6 +45,7 @@ function mapEvent(id: string, data: Record<string, unknown>): MeetupEvent {
     status: (data.status as EventStatus) || "confirmed",
     statusNote: String(data.statusNote ?? ""),
     approved: Boolean(data.approved),
+    tags: mapTags(data.tags),
     createdBy: data.createdBy ? String(data.createdBy) : undefined,
     createdAt: data.createdAt
       ? String((data.createdAt as { toDate?: () => Date }).toDate?.() ?? data.createdAt)
@@ -67,11 +75,24 @@ function mapSquad(id: string, data: Record<string, unknown>): SquadMember {
     gender: String(data.gender ?? ""),
     socialLink: String(data.socialLink ?? ""),
     bio: String(data.bio ?? ""),
+    email: normalizeEmail(String(data.email ?? "")),
     photoBase64: String(data.photoBase64 ?? ""),
     photoMimeType: String(data.photoMimeType ?? "image/jpeg"),
     photoUrl: String(data.photoUrl ?? ""),
     approved: Boolean(data.approved),
     createdBy: data.createdBy ? String(data.createdBy) : undefined,
+  };
+}
+
+function mapGroup(id: string, data: Record<string, unknown>): AudienceGroup {
+  const emailsRaw = Array.isArray(data.emails) ? data.emails : [];
+  return {
+    id,
+    name: String(data.name ?? id),
+    slug: String(data.slug ?? id),
+    emails: emailsRaw
+      .map((e) => normalizeEmail(String(e)))
+      .filter((e) => e.includes("@")),
   };
 }
 
@@ -172,6 +193,7 @@ export async function submitEvent(input: {
   location: string;
   description: string;
   userId: string;
+  tags?: string[];
 }): Promise<void> {
   await addDoc(collection(getClientDb(), "events"), {
     title: input.title,
@@ -184,6 +206,7 @@ export async function submitEvent(input: {
     statusNote: "",
     approved: false,
     reminderSent: false,
+    tags: input.tags || [],
     createdBy: input.userId,
     createdAt: serverTimestamp(),
   });
@@ -215,6 +238,7 @@ export async function submitSquadMember(input: {
   gender: string;
   socialLink: string;
   bio: string;
+  email?: string;
   photoBase64: string;
   photoMimeType: string;
   userId: string;
@@ -226,6 +250,7 @@ export async function submitSquadMember(input: {
     gender: input.gender,
     socialLink: input.socialLink,
     bio: input.bio,
+    email: normalizeEmail(input.email || ""),
     // Stored inline — no Cloud Storage. Compressed client-side before write.
     photoBase64: input.photoBase64,
     photoMimeType: input.photoMimeType || "image/jpeg",
@@ -300,20 +325,172 @@ export async function updateEventStatus(
   });
 }
 
+export async function updateEventTags(
+  eventId: string,
+  tags: string[],
+): Promise<void> {
+  await updateDoc(doc(getClientDb(), "events", eventId), {
+    tags: tags.map((t) => String(t).trim()).filter(Boolean),
+  });
+}
+
+export async function updateSquadEmail(
+  memberId: string,
+  email: string,
+): Promise<void> {
+  await updateDoc(doc(getClientDb(), "squad", memberId), {
+    email: normalizeEmail(email),
+  });
+}
+
+export type SquadProfileFields = {
+  name: string;
+  occupation: string;
+  age: string;
+  gender: string;
+  socialLink: string;
+  bio: string;
+  email: string;
+  photoBase64?: string;
+  photoMimeType?: string;
+};
+
+/** Owner or email-matched user updates their profile (and claims createdBy). */
+export async function updateMySquadProfile(
+  memberId: string,
+  userId: string,
+  fields: SquadProfileFields,
+): Promise<void> {
+  const payload: Record<string, unknown> = {
+    name: fields.name.trim(),
+    occupation: fields.occupation.trim(),
+    age: String(fields.age).trim(),
+    gender: fields.gender.trim(),
+    socialLink: fields.socialLink.trim(),
+    bio: fields.bio.trim(),
+    email: normalizeEmail(fields.email),
+    createdBy: userId,
+    updatedAt: serverTimestamp(),
+  };
+  if (fields.photoBase64) {
+    payload.photoBase64 = fields.photoBase64;
+    payload.photoMimeType = fields.photoMimeType || "image/jpeg";
+  }
+  await updateDoc(doc(getClientDb(), "squad", memberId), payload);
+}
+
+/** Admin full edit of any squad member (can also set approved). */
+export async function adminUpdateSquadMember(
+  memberId: string,
+  fields: SquadProfileFields & { approved?: boolean },
+): Promise<void> {
+  const payload: Record<string, unknown> = {
+    name: fields.name.trim(),
+    occupation: fields.occupation.trim(),
+    age: String(fields.age).trim(),
+    gender: fields.gender.trim(),
+    socialLink: fields.socialLink.trim(),
+    bio: fields.bio.trim(),
+    email: normalizeEmail(fields.email),
+    updatedAt: serverTimestamp(),
+  };
+  if (typeof fields.approved === "boolean") {
+    payload.approved = fields.approved;
+  }
+  if (fields.photoBase64) {
+    payload.photoBase64 = fields.photoBase64;
+    payload.photoMimeType = fields.photoMimeType || "image/jpeg";
+  }
+  await updateDoc(doc(getClientDb(), "squad", memberId), payload);
+}
+
+/**
+ * Find a profile this user can edit: own createdBy, or email match
+ * (includes unapproved so they can edit while pending).
+ */
+export async function findEditableSquadProfile(
+  userId: string,
+  email: string | null | undefined,
+): Promise<SquadMember | null> {
+  const db = getClientDb();
+  const snap = await getDocs(collection(db, "squad"));
+  const all = snap.docs.map((d) => mapSquad(d.id, d.data()));
+  const byUid = all.find((m) => m.createdBy === userId);
+  if (byUid) return byUid;
+  const e = normalizeEmail(email);
+  if (!e) return null;
+  return all.find((m) => m.email === e) || null;
+}
+
+export function subscribeGroups(
+  onData: (groups: AudienceGroup[]) => void,
+  onError?: (err: Error) => void,
+): Unsubscribe {
+  return onSnapshot(
+    collection(getClientDb(), "groups"),
+    (snap) => {
+      const groups = snap.docs
+        .map((d) => mapGroup(d.id, d.data()))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      onData(groups);
+    },
+    (err) => onError?.(err),
+  );
+}
+
+export async function fetchGroups(): Promise<AudienceGroup[]> {
+  const snap = await getDocs(collection(getClientDb(), "groups"));
+  return snap.docs
+    .map((d) => mapGroup(d.id, d.data()))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function saveGroup(input: {
+  id?: string;
+  name: string;
+  emails: string[];
+}): Promise<string> {
+  const name = input.name.trim();
+  if (!name) throw new Error("Group name is required.");
+  const slug = slugifyGroupName(name);
+  const id = input.id || slug;
+  const emails = input.emails.map(normalizeEmail).filter((e) => e.includes("@"));
+  await setDoc(
+    doc(getClientDb(), "groups", id),
+    {
+      name,
+      slug,
+      emails,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+  return id;
+}
+
+export async function deleteGroup(id: string): Promise<void> {
+  await deleteDoc(doc(getClientDb(), "groups", id));
+}
+
 export async function fetchAllForAdmin(): Promise<{
   events: MeetupEvent[];
   memories: Memory[];
   squad: SquadMember[];
+  groups: AudienceGroup[];
 }> {
-  const [eventsSnap, memoriesSnap, squadSnap] = await Promise.all([
+  const [eventsSnap, memoriesSnap, squadSnap, groupsSnap] = await Promise.all([
     getDocs(collection(getClientDb(), "events")),
     getDocs(collection(getClientDb(), "memories")),
     getDocs(collection(getClientDb(), "squad")),
+    getDocs(collection(getClientDb(), "groups")),
   ]);
   return {
     events: eventsSnap.docs.map((d) => mapEvent(d.id, d.data())),
     memories: memoriesSnap.docs.map((d) => mapMemory(d.id, d.data())),
     squad: squadSnap.docs.map((d) => mapSquad(d.id, d.data())),
+    groups: groupsSnap.docs
+      .map((d) => mapGroup(d.id, d.data()))
+      .sort((a, b) => a.name.localeCompare(b.name)),
   };
 }
 
