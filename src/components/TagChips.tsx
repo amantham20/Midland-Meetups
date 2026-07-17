@@ -60,8 +60,8 @@ export function TagPicker({
   return (
     <div className="flex flex-col gap-2">
       <p className="text-xs text-muted">
-        Leave all unchecked for <strong>everyone</strong>. Checked tags limit
-        who can see the event (by email on those groups).
+        Leave all unchecked for <strong>everyone</strong>. Check a group to
+        invite only that audience (you must be a member of the group).
       </p>
       <div className="flex flex-wrap gap-2">
         {groups.map((g) => {

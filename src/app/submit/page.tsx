@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { ConfigNotice } from "@/components/ConfigNotice";
@@ -10,6 +10,7 @@ import { toast } from "@/lib/toast-store";
 import { submitEvent, subscribeGroups } from "@/lib/firebase/data";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 import type { AudienceGroup } from "@/lib/types";
+import { groupsForEmail } from "@/lib/audience";
 import { formatTimeDisplay } from "@/lib/utils";
 
 export default function SubmitPage() {
@@ -19,10 +20,29 @@ export default function SubmitPage() {
   const [groups, setGroups] = useState<AudienceGroup[]>([]);
   const [tags, setTags] = useState<string[]>([]);
 
+  // Only groups the signed-in user belongs to (by email) — you can't invite
+  // audiences you aren't part of.
+  const myGroups = useMemo(
+    () => groupsForEmail(groups, user?.email),
+    [groups, user?.email],
+  );
+  const allowedSlugs = useMemo(
+    () => new Set(myGroups.map((g) => g.slug)),
+    [myGroups],
+  );
+
   useEffect(() => {
     if (!isFirebaseConfigured() || !user) return;
     return subscribeGroups(setGroups, (err) => console.error(err));
   }, [user]);
+
+  // Drop any selected tags the user is no longer allowed to use.
+  useEffect(() => {
+    setTags((prev) => {
+      const next = prev.filter((t) => allowedSlugs.has(t));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [allowedSlugs]);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -34,6 +54,8 @@ export default function SubmitPage() {
     const fd = new FormData(form);
     const timeRaw = String(fd.get("time") || "");
     const time = timeRaw ? formatTimeDisplay(timeRaw) : timeRaw;
+    // Enforce membership even if the UI is bypassed.
+    const safeTags = tags.filter((t) => allowedSlugs.has(t));
 
     setSaving(true);
     setStatus("Sending…");
@@ -47,7 +69,7 @@ export default function SubmitPage() {
         location: String(fd.get("location") || "").trim(),
         description: String(fd.get("description") || "").trim(),
         userId: user.uid,
-        tags,
+        tags: safeTags,
       });
       form.reset();
       setTags([]);
@@ -84,7 +106,7 @@ export default function SubmitPage() {
       <PageHeader
         kicker="Got an idea?"
         title="Submit an Event"
-        lede="Fill this out and it'll go to the organizer for review. Optionally limit the audience to specific groups (by email)."
+        lede="Fill this out and it'll go to the organizer for review. You can invite only audience groups you're a member of."
       />
 
       {loading ? (
@@ -178,13 +200,22 @@ export default function SubmitPage() {
             />
           </div>
           <div className="form-row">
-            <div className="field-label">Audience groups</div>
-            <TagPicker
-              groups={groups}
-              selected={tags}
-              onChange={setTags}
-              idPrefix="submit-tag"
-            />
+            <div className="field-label">Invite audience groups</div>
+            {myGroups.length === 0 ? (
+              <p className="text-sm text-muted">
+                You&apos;re not in any audience groups yet, so this event will be
+                visible to <strong>everyone</strong> once approved. Ask an admin
+                to add your account email to a group if you want to invite a
+                private audience.
+              </p>
+            ) : (
+              <TagPicker
+                groups={myGroups}
+                selected={tags}
+                onChange={setTags}
+                idPrefix="submit-tag"
+              />
+            )}
           </div>
           <button type="submit" className="btn-primary" disabled={saving}>
             Send Submission
