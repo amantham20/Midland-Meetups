@@ -13,6 +13,7 @@ import {
   approveDocument,
   deleteGroup,
   fetchAllForAdmin,
+  linkUserIdsForSquadEmails,
   rejectDocument,
   requestAdminClaim,
   saveGroup,
@@ -136,6 +137,17 @@ export default function AdminPage() {
   const load = useCallback(async () => {
     try {
       const data = await fetchAllForAdmin();
+      // Backfill userId for every profile that has an email (Auth lookup).
+      try {
+        const { linked } = await linkUserIdsForSquadEmails(data.squad);
+        if (linked > 0) {
+          const refreshed = await fetchAllForAdmin();
+          applyAdminData(refreshed);
+          return;
+        }
+      } catch (linkErr) {
+        console.warn("Could not link squad userIds", linkErr);
+      }
       applyAdminData(data);
     } catch (err) {
       console.error(err);
@@ -150,23 +162,13 @@ export default function AdminPage() {
   useEffect(() => {
     if (!isAdmin) return;
     let cancelled = false;
-    fetchAllForAdmin()
-      .then((data) => {
-        if (!cancelled) applyAdminData(data);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        console.error(err);
-        setError(
-          hasAdminClaim
-            ? "Couldn't load admin data. Check Firestore rules and indexes."
-            : "Couldn't load admin data. Your account needs the admin custom claim (Firestore rules check request.auth.token.admin).",
-        );
-      });
+    void load().then(() => {
+      if (cancelled) return;
+    });
     return () => {
       cancelled = true;
     };
-  }, [isAdmin, hasAdminClaim, applyAdminData]);
+  }, [isAdmin, load]);
 
   const pendingEvents = useMemo(
     () => events.filter((e) => !e.approved),
@@ -739,8 +741,10 @@ export default function AdminPage() {
           Squad profiles ({squad.length})
         </h2>
         <p className="mb-4 text-sm text-muted">
-          Edit every profile and set emails so you can put people into audience
-          groups. Profiles without email show a red badge.
+          Edit profiles and set emails for audience groups. Saving an email
+          links <code className="text-xs">userId</code> from Firebase Auth when
+          that account exists. Squad “Edit your profile” matches by email only.
+          Profiles without email show a red badge.
         </p>
         {squadSorted.length === 0 ? (
           <EmptyNote>No squad profiles yet.</EmptyNote>

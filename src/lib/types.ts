@@ -54,14 +54,20 @@ export interface SquadMember {
   gender: string;
   socialLink: string;
   bio: string;
-  /** Optional email so admins can match them into groups */
+  /** Sign-in email — primary key for “your profile” matching */
   email: string;
+  /**
+   * Firebase Auth uid stamped when email is set / profile is claimed.
+   * Matching for edit uses email; userId is written alongside.
+   */
+  userId?: string;
   /** Compressed JPEG/PNG base64 (no data: prefix). Preferred over Storage. */
   photoBase64: string;
   photoMimeType: string;
   /** Optional external URL (legacy); base64 takes precedence when present. */
   photoUrl: string;
   approved: boolean;
+  /** @deprecated Prefer userId — kept for older docs */
   createdBy?: string;
   createdAt?: string;
 }

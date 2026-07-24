@@ -67,6 +67,12 @@ function mapMemory(id: string, data: Record<string, unknown>): Memory {
 }
 
 function mapSquad(id: string, data: Record<string, unknown>): SquadMember {
+  // userId is canonical; fall back to legacy createdBy on older docs
+  const uid = data.userId
+    ? String(data.userId)
+    : data.createdBy
+      ? String(data.createdBy)
+      : undefined;
   return {
     id,
     name: String(data.name ?? ""),
@@ -76,6 +82,7 @@ function mapSquad(id: string, data: Record<string, unknown>): SquadMember {
     socialLink: String(data.socialLink ?? ""),
     bio: String(data.bio ?? ""),
     email: normalizeEmail(String(data.email ?? "")),
+    userId: uid,
     photoBase64: String(data.photoBase64 ?? ""),
     photoMimeType: String(data.photoMimeType ?? "image/jpeg"),
     photoUrl: String(data.photoUrl ?? ""),
@@ -243,6 +250,7 @@ export async function submitSquadMember(input: {
   photoMimeType: string;
   userId: string;
 }): Promise<void> {
+  const email = normalizeEmail(input.email || "");
   await addDoc(collection(getClientDb(), "squad"), {
     name: input.name,
     occupation: input.occupation,
@@ -250,13 +258,15 @@ export async function submitSquadMember(input: {
     gender: input.gender,
     socialLink: input.socialLink,
     bio: input.bio,
-    email: normalizeEmail(input.email || ""),
+    email,
+    // Stamp uid whenever email is set (email is how we match “your” profile).
+    userId: email ? input.userId : "",
     // Stored inline — no Cloud Storage. Compressed client-side before write.
     photoBase64: input.photoBase64,
     photoMimeType: input.photoMimeType || "image/jpeg",
     photoUrl: "",
     approved: false,
-    createdBy: input.userId,
+    createdBy: input.userId, // legacy mirror of userId
     createdAt: serverTimestamp(),
   });
 }
@@ -334,15 +344,6 @@ export async function updateEventTags(
   });
 }
 
-export async function updateSquadEmail(
-  memberId: string,
-  email: string,
-): Promise<void> {
-  await updateDoc(doc(getClientDb(), "squad", memberId), {
-    email: normalizeEmail(email),
-  });
-}
-
 export type SquadProfileFields = {
   name: string;
   occupation: string;
@@ -355,12 +356,48 @@ export type SquadProfileFields = {
   photoMimeType?: string;
 };
 
-/** Owner or email-matched user updates their profile (and claims createdBy). */
+/**
+ * Resolve Firebase Auth uids for emails (admin API).
+ * Missing Auth accounts return null for that email.
+ */
+export async function resolveAuthUidsByEmail(
+  emails: string[],
+): Promise<Record<string, string | null>> {
+  const normalized = Array.from(
+    new Set(emails.map((e) => normalizeEmail(e)).filter(Boolean)),
+  );
+  if (normalized.length === 0) return {};
+
+  const { getClientAuth } = await import("./client");
+  const user = getClientAuth().currentUser;
+  if (!user) throw new Error("Sign in required.");
+  const idToken = await user.getIdToken();
+
+  const res = await fetch("/api/admin/resolve-uids", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ emails: normalized }),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    uids?: Record<string, string | null>;
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(data.error || `Could not resolve uids (${res.status})`);
+  }
+  return data.uids || {};
+}
+
+/** Update own profile matched by email; always stamps userId when email is set. */
 export async function updateMySquadProfile(
   memberId: string,
   userId: string,
   fields: SquadProfileFields,
 ): Promise<void> {
+  const email = normalizeEmail(fields.email);
   const payload: Record<string, unknown> = {
     name: fields.name.trim(),
     occupation: fields.occupation.trim(),
@@ -368,8 +405,10 @@ export async function updateMySquadProfile(
     gender: fields.gender.trim(),
     socialLink: fields.socialLink.trim(),
     bio: fields.bio.trim(),
-    email: normalizeEmail(fields.email),
-    createdBy: userId,
+    email,
+    // Email is the match key; userId is stamped whenever email is present.
+    userId: email ? userId : "",
+    createdBy: email ? userId : "",
     updatedAt: serverTimestamp(),
   };
   if (fields.photoBase64) {
@@ -379,11 +418,27 @@ export async function updateMySquadProfile(
   await updateDoc(doc(getClientDb(), "squad", memberId), payload);
 }
 
-/** Admin full edit of any squad member (can also set approved). */
+/**
+ * Admin full edit of any squad member.
+ * When email is set, looks up Auth uid and stamps userId (and legacy createdBy).
+ */
 export async function adminUpdateSquadMember(
   memberId: string,
-  fields: SquadProfileFields & { approved?: boolean },
+  fields: SquadProfileFields & { approved?: boolean; userId?: string },
 ): Promise<void> {
+  const email = normalizeEmail(fields.email);
+  let userId = fields.userId ? String(fields.userId) : "";
+
+  if (email && !userId) {
+    try {
+      const map = await resolveAuthUidsByEmail([email]);
+      userId = map[email] || "";
+    } catch (err) {
+      // Admin SDK may be unavailable in local dev — still save email.
+      console.warn("Could not resolve userId for squad email", err);
+    }
+  }
+
   const payload: Record<string, unknown> = {
     name: fields.name.trim(),
     occupation: fields.occupation.trim(),
@@ -391,9 +446,19 @@ export async function adminUpdateSquadMember(
     gender: fields.gender.trim(),
     socialLink: fields.socialLink.trim(),
     bio: fields.bio.trim(),
-    email: normalizeEmail(fields.email),
+    email,
     updatedAt: serverTimestamp(),
   };
+
+  if (email) {
+    // Always set userId when email is present (empty string if no Auth user yet).
+    payload.userId = userId;
+    payload.createdBy = userId;
+  } else {
+    payload.userId = "";
+    payload.createdBy = "";
+  }
+
   if (typeof fields.approved === "boolean") {
     payload.approved = fields.approved;
   }
@@ -405,21 +470,77 @@ export async function adminUpdateSquadMember(
 }
 
 /**
- * Find a profile this user can edit: own createdBy, or email match
- * (includes unapproved so they can edit while pending).
+ * For every squad member that already has an email, resolve Auth uid and stamp userId.
+ * Call from admin after load or via a “link accounts” action.
+ */
+export async function linkUserIdsForSquadEmails(
+  members: { id: string; email: string; userId?: string }[],
+): Promise<{ linked: number; missing: number }> {
+  const withEmail = members.filter((m) => normalizeEmail(m.email));
+  if (withEmail.length === 0) return { linked: 0, missing: 0 };
+
+  const map = await resolveAuthUidsByEmail(withEmail.map((m) => m.email));
+  let linked = 0;
+  let missing = 0;
+
+  await Promise.all(
+    withEmail.map(async (m) => {
+      const email = normalizeEmail(m.email);
+      const uid = map[email] || "";
+      if (!uid) {
+        missing += 1;
+        // Still clear a stale userId if email has no Auth account? keep existing.
+        return;
+      }
+      if (m.userId === uid) return;
+      await updateDoc(doc(getClientDb(), "squad", m.id), {
+        email,
+        userId: uid,
+        createdBy: uid,
+        updatedAt: serverTimestamp(),
+      });
+      linked += 1;
+    }),
+  );
+
+  return { linked, missing };
+}
+
+/**
+ * Profile this user may edit — matched by sign-in email only (not createdBy / userId).
+ * When found, stamps userId if missing so the doc stays linked.
  */
 export async function findEditableSquadProfile(
   userId: string,
   email: string | null | undefined,
 ): Promise<SquadMember | null> {
-  const db = getClientDb();
-  const snap = await getDocs(collection(db, "squad"));
-  const all = snap.docs.map((d) => mapSquad(d.id, d.data()));
-  const byUid = all.find((m) => m.createdBy === userId);
-  if (byUid) return byUid;
   const e = normalizeEmail(email);
-  if (!e) return null;
-  return all.find((m) => m.email === e) || null;
+  if (!e || !userId) return null;
+
+  const emailSnap = await getDocs(
+    query(collection(getClientDb(), "squad"), where("email", "==", e)),
+  );
+  if (emailSnap.empty) return null;
+
+  const docSnap = emailSnap.docs[0]!;
+  const member = mapSquad(docSnap.id, docSnap.data());
+
+  // Stamp userId whenever email matches and uid is missing/outdated.
+  if (member.userId !== userId) {
+    try {
+      await updateDoc(doc(getClientDb(), "squad", member.id), {
+        userId,
+        createdBy: userId,
+        updatedAt: serverTimestamp(),
+      });
+      member.userId = userId;
+      member.createdBy = userId;
+    } catch (err) {
+      console.warn("Could not stamp squad userId", err);
+    }
+  }
+
+  return member;
 }
 
 export function subscribeGroups(

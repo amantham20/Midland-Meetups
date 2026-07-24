@@ -44,6 +44,7 @@ service cloud.firestore {
     }
 
     match /squad/{memberId} {
+      // Ownership is email-based (sign-in email == profile.email).
       function squadEmailMatches() {
         return signedIn()
           && request.auth.token.email is string
@@ -51,29 +52,34 @@ service cloud.firestore {
           && resource.data.email == request.auth.token.email.lower();
       }
 
-      function ownsSquad() {
-        return signedIn() && (
-          resource.data.createdBy == request.auth.uid
-          || squadEmailMatches()
-        );
+      function requestEmailMatchesAuth() {
+        return signedIn()
+          && request.auth.token.email is string
+          && request.resource.data.email is string
+          && request.resource.data.email == request.auth.token.email.lower();
       }
 
       allow read: if resource.data.approved == true || isAdmin()
-        || (signedIn() && resource.data.createdBy == request.auth.uid)
-        || squadEmailMatches();
+        || squadEmailMatches()
+        || (signedIn() && resource.data.userId == request.auth.uid)
+        || (signedIn() && resource.data.createdBy == request.auth.uid);
 
       // Photos are compressed base64 on the document (no Cloud Storage).
+      // New profiles must use the sign-in email + stamp userId.
       allow create: if signedIn()
         && request.resource.data.approved == false
-        && request.resource.data.createdBy == request.auth.uid
+        && requestEmailMatchesAuth()
+        && request.resource.data.userId == request.auth.uid
         && (!('photoBase64' in request.resource.data)
             || request.resource.data.photoBase64.size() < 350000);
 
-      // Admins: full edit. Owners (by uid or matching email): edit profile but not approval.
+      // Admins: full edit.
+      // Email match: edit own profile; stamp userId to self; cannot change approval.
       allow update: if isAdmin()
-        || (ownsSquad()
+        || (squadEmailMatches()
+          && requestEmailMatchesAuth()
           && request.resource.data.approved == resource.data.approved
-          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.userId == request.auth.uid
           && (!('photoBase64' in request.resource.data)
               || request.resource.data.photoBase64.size() < 350000));
 

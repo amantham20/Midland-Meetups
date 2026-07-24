@@ -77,7 +77,12 @@ export default function SquadClient() {
   }, []);
 
   useEffect(() => {
-    if (!isFirebaseConfigured() || !user) return;
+    if (!isFirebaseConfigured() || !user) {
+      setMyProfile(undefined);
+      return;
+    }
+    // Reset while resolving so we never flash another account's profile.
+    setMyProfile(undefined);
     let cancelled = false;
     void findEditableSquadProfile(user.uid, user.email)
       .then((p) => {
@@ -126,6 +131,7 @@ export default function SquadClient() {
     setStatus("Sending…");
     try {
       const photo = await readPhoto(form);
+      // Always bind profile to the signed-in account — never trust form email.
       await submitSquadMember({
         name: String(fd.get("name") || "").trim(),
         occupation: String(fd.get("occupation") || "").trim(),
@@ -133,7 +139,7 @@ export default function SquadClient() {
         gender: String(fd.get("gender") || "").trim(),
         socialLink: String(fd.get("socialLink") || "").trim(),
         bio: String(fd.get("bio") || "").trim(),
-        email: String(fd.get("email") || user.email || "").trim(),
+        email: user.email || "",
         photoBase64: photo?.photoBase64 || "",
         photoMimeType: photo?.photoMimeType || "image/jpeg",
         userId: user.uid,
@@ -161,6 +167,12 @@ export default function SquadClient() {
   async function onUpdate(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!user || !myProfile) return;
+    // Edit only the profile matched to this sign-in email.
+    const signInEmail = (user.email || "").trim().toLowerCase();
+    if (!signInEmail || myProfile.email !== signInEmail) {
+      toast.error("You can only edit the profile for your sign-in email.");
+      return;
+    }
     const form = e.currentTarget;
     const fd = new FormData(form);
     setSaving(true);
@@ -174,7 +186,7 @@ export default function SquadClient() {
         gender: String(fd.get("gender") || "").trim(),
         socialLink: String(fd.get("socialLink") || "").trim(),
         bio: String(fd.get("bio") || "").trim(),
-        email: String(fd.get("email") || user.email || "").trim(),
+        email: user.email || "",
         photoBase64: photo?.photoBase64,
         photoMimeType: photo?.photoMimeType,
       });
@@ -318,7 +330,7 @@ export default function SquadClient() {
       ) : (
         <form
           className="form-card"
-          key={myProfile?.id || "new"}
+          key={`${user.uid}-${myProfile?.id || "new"}`}
           onSubmit={(e) => void (myProfile ? onUpdate(e) : onCreate(e))}
         >
           <div className="form-row">
@@ -382,9 +394,7 @@ export default function SquadClient() {
           <div className="form-row">
             <label className="field-label" htmlFor="sq-email">
               Email{" "}
-              <span className="field-hint">
-                — must match your sign-in email to claim an existing profile
-              </span>
+              <span className="field-hint">— locked to your sign-in account</span>
             </label>
             <input
               className="field"
@@ -392,9 +402,8 @@ export default function SquadClient() {
               name="email"
               type="email"
               required
-              defaultValue={
-                myProfile?.email || user.email || ""
-              }
+              readOnly
+              value={user.email || ""}
               placeholder="you@example.com"
             />
           </div>
