@@ -22,6 +22,12 @@ const NAV = [
     match: (p: string) => p.startsWith("/squad"),
   },
   {
+    href: "https://ryanpelletier.github.io/Midland-Meetups/game.html",
+    label: "Game",
+    match: () => false,
+    external: true,
+  },
+  {
     href: "/submit",
     label: "Submit an Event",
     match: (p: string) => p.startsWith("/submit"),
@@ -97,13 +103,28 @@ export function Header() {
     <>
       {NAV.map((item) => {
         const active = item.match(pathname);
+        const className = linkClass(active, item.cta);
+        if (item.external) {
+          return (
+            <a
+              key={item.href}
+              href={item.href}
+              onClick={() => setOpen(false)}
+              className={className}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {item.label}
+            </a>
+          );
+        }
         return (
           <Link
             key={item.href}
             href={item.href}
             onClick={() => setOpen(false)}
             aria-current={active ? "page" : undefined}
-            className={linkClass(active, item.cta)}
+            className={className}
           >
             {item.label}
           </Link>
