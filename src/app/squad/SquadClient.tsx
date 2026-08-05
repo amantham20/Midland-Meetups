@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { ConfigNotice } from "@/components/ConfigNotice";
@@ -19,15 +19,19 @@ import {
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 import type { AudienceGroup, SquadMember } from "@/lib/types";
 import { groupsForEmail } from "@/lib/audience";
-import {
-  membersContentKey,
-  readSquadListCache,
-} from "@/lib/photoCache";
+import { membersContentKey, readSquadListCache } from "@/lib/photoCache";
 import { resizeImageToBase64 } from "@/lib/utils";
+import { SQUAD_HEADER } from "./header";
+import { SquadMemberCard } from "./SquadMemberCard";
+import { SquadMemberModal } from "./SquadMemberModal";
+import { SquadProfileDialog, type ProfileDraft } from "./SquadProfileDialog";
 
 /**
  * Client-only squad UI (loaded with next/dynamic ssr:false from page.tsx).
  * Avoids hydrating Firebase/session-backed member lists against empty SSR HTML.
+ *
+ * The board is the page: your own profile is a single summary row with one
+ * Edit button, and the create/edit form only appears in a dialog on demand.
  */
 export default function SquadClient() {
   const { user, configured } = useAuth();
@@ -42,6 +46,8 @@ export default function SquadClient() {
     undefined,
   );
   const [groups, setGroups] = useState<AudienceGroup[]>([]);
+  const [editOpen, setEditOpen] = useState(false);
+  const [openMemberId, setOpenMemberId] = useState<string | null>(null);
   const lastKeyRef = useRef("");
 
   useEffect(() => {
@@ -102,11 +108,9 @@ export default function SquadClient() {
     return subscribeGroups(setGroups, (err) => console.error(err));
   }, [user]);
 
-  async function readPhoto(
-    form: HTMLFormElement,
+  async function compressPhoto(
+    file: File | null,
   ): Promise<{ photoBase64: string; photoMimeType: string } | null> {
-    const file = (form.elements.namedItem("photo") as HTMLInputElement)
-      ?.files?.[0];
     if (!file) return null;
     if (file.type !== "image/jpeg" && file.type !== "image/png") {
       throw new Error("That photo needs to be a JPG or PNG.");
@@ -119,44 +123,68 @@ export default function SquadClient() {
     };
   }
 
-  async function onCreate(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function saveProfile(draft: ProfileDraft) {
     if (!user) {
       toast.info("Sign in to join the squad.");
       return;
     }
-    const form = e.currentTarget;
-    const fd = new FormData(form);
+    const editing = myProfile;
+    if (editing) {
+      // Edit only the profile matched to this sign-in email.
+      const signInEmail = (user.email || "").trim().toLowerCase();
+      if (!signInEmail || editing.email !== signInEmail) {
+        toast.error("You can only edit the profile for your sign-in email.");
+        return;
+      }
+    }
+
     setSaving(true);
-    setStatus("Sending…");
+    setStatus(editing ? "Saving…" : "Sending…");
     try {
-      const photo = await readPhoto(form);
-      // Always bind profile to the signed-in account — never trust form email.
-      await submitSquadMember({
-        name: String(fd.get("name") || "").trim(),
-        occupation: String(fd.get("occupation") || "").trim(),
-        age: String(fd.get("age") || "").trim(),
-        gender: String(fd.get("gender") || "").trim(),
-        socialLink: String(fd.get("socialLink") || "").trim(),
-        bio: String(fd.get("bio") || "").trim(),
-        email: user.email || "",
-        photoBase64: photo?.photoBase64 || "",
-        photoMimeType: photo?.photoMimeType || "image/jpeg",
-        userId: user.uid,
-      });
-      form.reset();
-      const msg =
-        "Sent! Your profile is in for review and will show up once approved.";
-      setStatus(msg);
-      toast.success(msg);
-      const p = await findEditableSquadProfile(user.uid, user.email);
-      setMyProfile(p);
+      const photo = await compressPhoto(draft.photoFile);
+      if (editing) {
+        await updateMySquadProfile(editing.id, user.uid, {
+          name: draft.name,
+          occupation: draft.occupation,
+          age: draft.age,
+          gender: draft.gender,
+          socialLink: draft.socialLink,
+          bio: draft.bio,
+          email: user.email || "",
+          photoBase64: photo?.photoBase64,
+          photoMimeType: photo?.photoMimeType,
+        });
+      } else {
+        // Always bind profile to the signed-in account — never trust form email.
+        await submitSquadMember({
+          name: draft.name,
+          occupation: draft.occupation,
+          age: draft.age,
+          gender: draft.gender,
+          socialLink: draft.socialLink,
+          bio: draft.bio,
+          email: user.email || "",
+          photoBase64: photo?.photoBase64 || "",
+          photoMimeType: photo?.photoMimeType || "image/jpeg",
+          userId: user.uid,
+        });
+      }
+      toast.success(
+        editing
+          ? "Profile updated."
+          : "Sent! Your profile is in for review and will show up once approved.",
+      );
+      setStatus("");
+      setEditOpen(false);
+      setMyProfile(await findEditableSquadProfile(user.uid, user.email));
     } catch (err) {
       console.error(err);
       const message =
         err instanceof Error
           ? err.message
-          : "Something went wrong. Check your connection and try again.";
+          : editing
+            ? "Couldn't save your profile. Check your connection."
+            : "Something went wrong. Check your connection and try again.";
       setStatus(message);
       toast.error(message);
     } finally {
@@ -164,61 +192,16 @@ export default function SquadClient() {
     }
   }
 
-  async function onUpdate(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!user || !myProfile) return;
-    // Edit only the profile matched to this sign-in email.
-    const signInEmail = (user.email || "").trim().toLowerCase();
-    if (!signInEmail || myProfile.email !== signInEmail) {
-      toast.error("You can only edit the profile for your sign-in email.");
-      return;
-    }
-    const form = e.currentTarget;
-    const fd = new FormData(form);
-    setSaving(true);
-    setStatus("Saving…");
-    try {
-      const photo = await readPhoto(form);
-      await updateMySquadProfile(myProfile.id, user.uid, {
-        name: String(fd.get("name") || "").trim(),
-        occupation: String(fd.get("occupation") || "").trim(),
-        age: String(fd.get("age") || "").trim(),
-        gender: String(fd.get("gender") || "").trim(),
-        socialLink: String(fd.get("socialLink") || "").trim(),
-        bio: String(fd.get("bio") || "").trim(),
-        email: user.email || "",
-        photoBase64: photo?.photoBase64,
-        photoMimeType: photo?.photoMimeType,
-      });
-      const msg = "Profile updated.";
-      setStatus(msg);
-      toast.success(msg);
-      const p = await findEditableSquadProfile(user.uid, user.email);
-      setMyProfile(p);
-      // clear file input only
-      const photoInput = form.elements.namedItem("photo") as HTMLInputElement;
-      if (photoInput) photoInput.value = "";
-    } catch (err) {
-      console.error(err);
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Couldn't save your profile. Check your connection.";
-      setStatus(message);
-      toast.error(message);
-    } finally {
-      setSaving(false);
-    }
+  function openEditor() {
+    setStatus("");
+    setOpenMemberId(null);
+    setEditOpen(true);
   }
 
   if (!configured) {
     return (
       <>
-        <PageHeader
-          kicker="Who's in it"
-          title="The Squad"
-          lede="The people who show up."
-        />
+        <PageHeader {...SQUAD_HEADER} />
         <ConfigNotice />
       </>
     );
@@ -228,14 +211,92 @@ export default function SquadClient() {
     myProfile || user
       ? groupsForEmail(groups, myProfile?.email || user?.email)
       : [];
+  const openMember = members.find((m) => m.id === openMemberId) || null;
 
   return (
     <>
-      <PageHeader
-        kicker="Who's in it"
-        title="The Squad"
-        lede="The people who show up. Sign in to join or edit your profile. Email links you to audience groups for private events."
-      />
+      <PageHeader {...SQUAD_HEADER} />
+
+      {/* One row for everything about you: who you are, and one Edit button. */}
+      <section className="mb-10" aria-label="Your profile">
+        {!user ? (
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-surface p-5 shadow-sm">
+            <p className="text-muted">
+              Sign in to add your profile and get into event groups.
+            </p>
+            <Link
+              href="/login?next=/squad"
+              className="btn-primary w-full sm:w-auto"
+            >
+              Sign in
+            </Link>
+          </div>
+        ) : myProfile === undefined ? (
+          <div className="rounded-lg border border-border bg-surface p-5 shadow-sm">
+            <p className="text-muted">Loading your profile…</p>
+          </div>
+        ) : myProfile ? (
+          <div className="flex flex-wrap items-center gap-4 rounded-lg border border-blue/30 bg-surface p-5 shadow-sm">
+            <div className="flex min-w-0 flex-1 items-center gap-4">
+              <SquadPhoto member={myProfile} sizeClass="h-14 w-14 shrink-0" />
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-display text-lg font-bold text-ink">
+                    {myProfile.name}
+                  </span>
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                      myProfile.approved
+                        ? "bg-green/15 text-green"
+                        : "bg-yellow/25 text-[#8a6a12]"
+                    }`}
+                  >
+                    {myProfile.approved ? "On the board" : "Pending review"}
+                  </span>
+                </div>
+                <p className="text-sm text-muted">
+                  {myProfile.occupation}
+                  {myGroups.length > 0 && (
+                    <> · Groups: {myGroups.map((g) => g.name).join(", ")}</>
+                  )}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={openEditor}
+              className="btn-primary w-full sm:w-auto"
+            >
+              <span className="mr-1.5">{Icons.pencil}</span> Edit profile
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-surface p-5 shadow-sm">
+            <p className="text-muted">
+              You&apos;re not on the board yet — add a photo and a couple of
+              lines about you.
+            </p>
+            <button
+              type="button"
+              onClick={openEditor}
+              className="btn-primary w-full sm:w-auto"
+            >
+              <span className="mr-1.5">{Icons.plus}</span> Join the Squad
+            </button>
+          </div>
+        )}
+      </section>
+
+      <div className="mb-4 flex items-baseline justify-between gap-3">
+        <h2 className="font-display text-[clamp(1.4rem,3vw,1.75rem)] font-bold tracking-tight text-ink">
+          On the board
+        </h2>
+        {members.length > 0 && (
+          <span className="text-sm text-muted">
+            {members.length} {members.length === 1 ? "member" : "members"}
+          </span>
+        )}
+      </div>
 
       <section
         className="mb-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
@@ -254,217 +315,45 @@ export default function SquadClient() {
         {!loading && !error && members.length === 0 && (
           <div className="col-span-full">
             <EmptyNote>
-              No profiles yet — be the first to join the squad below.
+              No profiles yet — be the first to join the squad.
             </EmptyNote>
           </div>
         )}
         {members.map((m) => (
-          <article
+          <SquadMemberCard
             key={m.id}
-            className="flex flex-col items-center rounded-lg border border-border bg-surface p-5 text-center shadow-sm"
-          >
-            <SquadPhoto member={m} sizeClass="mb-4 h-28 w-28 mx-auto" />
-            <h3 className="w-full font-display text-lg font-bold text-ink">
-              {m.name}
-            </h3>
-            <div className="w-full text-sm font-medium text-muted">
-              {m.occupation}
-            </div>
-            {(m.age || m.gender) && (
-              <div className="mt-1 w-full text-sm text-muted">
-                {[m.age, m.gender].filter(Boolean).join(" · ")}
-              </div>
-            )}
-            <p className="mt-3 w-full text-sm leading-relaxed text-ink/85">
-              {m.bio}
-            </p>
-            {m.socialLink && (
-              <a
-                href={m.socialLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-3 inline-flex items-center justify-center gap-1.5 text-sm font-semibold text-blue hover:text-blue-ink"
-              >
-                {Icons.link} Follow
-              </a>
-            )}
-          </article>
+            member={m}
+            isMine={Boolean(myProfile && m.id === myProfile.id)}
+            onOpen={() => setOpenMemberId(m.id)}
+            onEdit={openEditor}
+          />
         ))}
       </section>
 
-      <div className="mb-6">
-        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-          Your profile
-        </div>
-        <h2 className="font-display text-[clamp(1.7rem,3.5vw,2.2rem)] font-bold tracking-tight">
-          {myProfile ? "Edit your profile" : "Join the Squad"}
-        </h2>
-        <p className="mt-2 max-w-2xl text-muted">
-          {myProfile
-            ? myProfile.approved
-              ? "Update your details anytime. Keep your email current so you stay in the right event groups."
-              : "Your profile is waiting for approval — you can still edit it. It will appear on the board once approved."
-            : "Tell us a bit about yourself. A photo is optional. Use the same email as your account so admins can connect you to audience groups."}
-        </p>
-        {myProfile && myGroups.length > 0 && (
-          <p className="mt-2 text-sm font-semibold text-blue">
-            Your groups: {myGroups.map((g) => g.name).join(", ")}
-          </p>
-        )}
-      </div>
+      {openMember && (
+        <SquadMemberModal
+          member={openMember}
+          isMine={Boolean(myProfile && openMember.id === myProfile.id)}
+          onEdit={openEditor}
+          onClose={() => setOpenMemberId(null)}
+        />
+      )}
 
-      {!user ? (
-        <div className="form-card">
-          <p className="text-muted">
-            <Link
-              href="/login?next=/squad"
-              className="font-semibold text-blue hover:underline"
-            >
-              Sign in
-            </Link>{" "}
-            to join or edit your squad profile.
-          </p>
-        </div>
-      ) : myProfile === undefined ? (
-        <EmptyNote>Loading your profile…</EmptyNote>
-      ) : (
-        <form
-          className="form-card"
+      {editOpen && user && (
+        <SquadProfileDialog
           key={`${user.uid}-${myProfile?.id || "new"}`}
-          onSubmit={(e) => void (myProfile ? onUpdate(e) : onCreate(e))}
-        >
-          <div className="form-row">
-            <label className="field-label" htmlFor="sq-name">
-              Name
-            </label>
-            <input
-              className="field"
-              id="sq-name"
-              name="name"
-              required
-              defaultValue={myProfile?.name || user.displayName || ""}
-              placeholder="What should people call you?"
-            />
-          </div>
-          <div className="form-row two-col">
-            <div>
-              <label className="field-label" htmlFor="sq-occupation">
-                Occupation
-              </label>
-              <input
-                className="field"
-                id="sq-occupation"
-                name="occupation"
-                required
-                defaultValue={myProfile?.occupation || ""}
-                placeholder="What do you do?"
-              />
-            </div>
-            <div>
-              <label className="field-label" htmlFor="sq-age">
-                Age
-              </label>
-              <input
-                className="field"
-                id="sq-age"
-                name="age"
-                type="number"
-                required
-                min={1}
-                max={120}
-                defaultValue={myProfile?.age || ""}
-                placeholder="e.g. 29"
-              />
-            </div>
-          </div>
-          <div className="form-row">
-            <label className="field-label" htmlFor="sq-gender">
-              Gender{" "}
-              <span className="field-hint">— however you&apos;d like it shown</span>
-            </label>
-            <input
-              className="field"
-              id="sq-gender"
-              name="gender"
-              required
-              defaultValue={myProfile?.gender || ""}
-              placeholder="e.g. she/her, he/him, they/them"
-            />
-          </div>
-          <div className="form-row">
-            <label className="field-label" htmlFor="sq-email">
-              Email{" "}
-              <span className="field-hint">— locked to your sign-in account</span>
-            </label>
-            <input
-              className="field"
-              id="sq-email"
-              name="email"
-              type="email"
-              required
-              readOnly
-              value={user.email || ""}
-              placeholder="you@example.com"
-            />
-          </div>
-          <div className="form-row">
-            <label className="field-label" htmlFor="sq-social">
-              Social media link <span className="field-hint">— optional</span>
-            </label>
-            <input
-              className="field"
-              id="sq-social"
-              name="socialLink"
-              type="url"
-              defaultValue={myProfile?.socialLink || ""}
-              placeholder="https://instagram.com/yourname"
-            />
-          </div>
-          <div className="form-row">
-            <label className="field-label" htmlFor="sq-bio">
-              Bio
-            </label>
-            <textarea
-              className="field min-h-[100px]"
-              id="sq-bio"
-              name="bio"
-              required
-              defaultValue={myProfile?.bio || ""}
-              placeholder="A sentence or two about you — what brings you around, what you're into."
-            />
-          </div>
-          <div className="form-row">
-            <label className="field-label" htmlFor="sq-photo">
-              Photo{" "}
-              <span className="field-hint">
-                — {myProfile ? "optional, leave empty to keep current" : "optional"},
-                JPG/PNG
-              </span>
-            </label>
-            {myProfile && (
-              <div className="mb-2">
-                <SquadPhoto member={myProfile} sizeClass="h-20 w-20" />
-              </div>
-            )}
-            <input
-              id="sq-photo"
-              name="photo"
-              type="file"
-              accept="image/jpeg,image/png"
-              className="block w-full text-sm text-muted"
-            />
-          </div>
-          <button type="submit" className="btn-primary" disabled={saving}>
-            {saving
-              ? myProfile
-                ? "Saving…"
-                : "Sending…"
-              : myProfile
-                ? "Save profile"
-                : "Send Profile"}
-          </button>
-          {status && <p className="mt-3 text-sm text-muted">{status}</p>}
-        </form>
+          member={myProfile || null}
+          email={user.email || ""}
+          defaultName={user.displayName || ""}
+          saving={saving}
+          status={status}
+          onSubmit={(draft) => void saveProfile(draft)}
+          onClose={() => {
+            if (saving) return;
+            setEditOpen(false);
+            setStatus("");
+          }}
+        />
       )}
     </>
   );

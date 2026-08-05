@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyNote } from "@/components/EmptyNote";
+import { SQUAD_HEADER } from "./header";
 
 /**
  * Squad data (Firestore + session cache) is browser-only. Loading the body
@@ -13,11 +14,7 @@ const SquadClient = dynamic(() => import("./SquadClient"), {
   ssr: false,
   loading: () => (
     <>
-      <PageHeader
-        kicker="Who's in it"
-        title="The Squad"
-        lede="The people who show up. Sign in to join or edit your profile. Email links you to audience groups for private events."
-      />
+      <PageHeader {...SQUAD_HEADER} />
       <section
         className="mb-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
         aria-label="Squad members"
