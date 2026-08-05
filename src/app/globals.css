@@ -14,9 +14,25 @@
   --yellow: #f6b93b;
   --green: #12b76a;
 
+  /* Tinted fills + readable text pairs for badges, chips and soft buttons */
+  --blue-soft: rgba(40, 81, 227, 0.1);
+  --red-soft: rgba(229, 72, 77, 0.12);
+  --yellow-soft: rgba(246, 185, 59, 0.22);
+  --green-soft: rgba(18, 183, 106, 0.14);
+  --green-ink: #0b7f4d;
+  --yellow-ink: #8a6a12;
+  --red-ink: #b32b2f;
+
+  /* Focus ring shared by every interactive control */
+  --ring: 0 0 0 3px rgba(40, 81, 227, 0.25);
+  --ring-danger: 0 0 0 3px rgba(229, 72, 77, 0.22);
+
   --display: var(--font-display), "Space Grotesk", sans-serif;
   --body: var(--font-body), "Inter", sans-serif;
   --mono: var(--font-mono), "JetBrains Mono", monospace;
+
+  /* Height of the sticky site header — sub-navs stick right below it */
+  --header-h: 76px;
 
   --r-lg: 18px;
   --r-md: 12px;
@@ -37,8 +53,11 @@
   --color-blue: var(--blue);
   --color-blue-ink: var(--blue-ink);
   --color-red: var(--red);
+  --color-red-ink: var(--red-ink);
   --color-yellow: var(--yellow);
+  --color-yellow-ink: var(--yellow-ink);
   --color-green: var(--green);
+  --color-green-ink: var(--green-ink);
   --font-display: var(--display);
   --font-sans: var(--body);
   --font-mono: var(--mono);
@@ -91,78 +110,239 @@
   }
 }
 
-/* Form controls shared look */
-.field {
-  width: 100%;
-  border: 1.5px solid var(--border);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  color: var(--ink);
-  padding: 0.65rem 0.85rem;
-  outline: none;
-  transition: border-color 0.15s ease;
-}
+/* Component classes live in the `components` layer so single-purpose Tailwind
+   utilities (pl-9, min-h-*, w-full …) still win when combined with them. */
+@layer components {
+  /* Form controls shared look */
+  .field {
+    width: 100%;
+    border: 1.5px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    color: var(--ink);
+    padding: 0.65rem 0.85rem;
+    outline: none;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
 
-.field:focus {
-  border-color: var(--blue);
-}
+  .field::placeholder {
+    color: color-mix(in srgb, var(--muted) 70%, transparent);
+  }
 
-.field-label {
-  display: block;
-  margin-bottom: 0.4rem;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--ink);
-}
+  .field:hover:not(:focus):not(:disabled) {
+    border-color: color-mix(in srgb, var(--muted) 40%, var(--border));
+  }
 
-.field-hint {
-  font-weight: 400;
-  color: var(--muted);
-}
+  .field:focus {
+    border-color: var(--blue);
+    box-shadow: var(--ring);
+  }
 
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 999px;
-  background: var(--blue);
-  color: white;
-  font-weight: 600;
-  padding: 0.7rem 1.25rem;
-  transition: background 0.15s ease;
-}
+  .field:disabled,
+  .field[readonly] {
+    background: var(--surface-2);
+    color: var(--muted);
+  }
 
-.btn-primary:hover {
-  background: var(--blue-ink);
-}
+  .field-label {
+    display: block;
+    margin-bottom: 0.4rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--ink);
+  }
 
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+  .field-hint {
+    font-weight: 400;
+    color: var(--muted);
+  }
 
-.form-card {
-  max-width: 560px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  background: var(--surface);
-  padding: 1.5rem;
-  box-shadow: var(--shadow-sm);
-}
+  /* ——— Buttons ———
+     `.btn` is the shared shape; pair it with a variant (.btn-secondary, .btn-ghost,
+     .btn-danger, .btn-soft). `.btn-primary` stays self-contained so the older
+     `className="btn-primary"` call sites keep working on their own. */
+  .btn,
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    border: 1.5px solid transparent;
+    border-radius: 999px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    padding: 0.62rem 1.15rem;
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
 
-.form-row {
-  margin-bottom: 1rem;
-}
+  .btn:focus-visible,
+  .btn-primary:focus-visible {
+    outline: none;
+    box-shadow: var(--ring);
+  }
 
-.form-row.two-col {
-  display: grid;
-  gap: 1rem;
-}
+  .btn:disabled,
+  .btn-primary:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
 
-@media (min-width: 520px) {
+  .btn-primary {
+    background: var(--blue);
+    color: #fff;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background: var(--blue-ink);
+  }
+
+  .btn-secondary {
+    background: var(--surface);
+    border-color: var(--border);
+    color: var(--ink);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    background: var(--surface-2);
+    border-color: color-mix(in srgb, var(--muted) 35%, var(--border));
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--muted);
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--surface-2);
+    color: var(--ink);
+  }
+
+  .btn-soft {
+    background: var(--blue-soft);
+    color: var(--blue);
+  }
+
+  .btn-soft:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--blue) 18%, transparent);
+  }
+
+  .btn-danger {
+    background: transparent;
+    border-color: color-mix(in srgb, var(--red) 35%, transparent);
+    color: var(--red-ink);
+  }
+
+  .btn-danger:hover:not(:disabled) {
+    background: var(--red-soft);
+    border-color: var(--red);
+  }
+
+  .btn-danger:focus-visible {
+    box-shadow: var(--ring-danger);
+  }
+
+  /* Size modifiers last so they win over variant padding */
+  .btn-sm {
+    padding: 0.42rem 0.85rem;
+    font-size: 0.82rem;
+  }
+
+  .btn-icon {
+    padding: 0;
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  /* ——— Surfaces ——— */
+  .card {
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .card-hover {
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+
+  .card-hover:hover {
+    border-color: color-mix(in srgb, var(--blue) 30%, var(--border));
+    box-shadow: var(--shadow-md);
+  }
+
+  /* ——— Badges ——— */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    border-radius: 999px;
+    padding: 0.18rem 0.6rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.5;
+    white-space: nowrap;
+  }
+
+  .badge-neutral {
+    background: var(--surface-2);
+    color: var(--muted);
+  }
+
+  .badge-blue {
+    background: var(--blue-soft);
+    color: var(--blue);
+  }
+
+  .badge-green {
+    background: var(--green-soft);
+    color: var(--green-ink);
+  }
+
+  .badge-amber {
+    background: var(--yellow-soft);
+    color: var(--yellow-ink);
+  }
+
+  .badge-red {
+    background: var(--red-soft);
+    color: var(--red-ink);
+  }
+
+  .form-card {
+    max-width: 560px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .form-row {
+    margin-bottom: 1rem;
+  }
+
   .form-row.two-col {
-    grid-template-columns: 1fr 1fr;
+    display: grid;
+    gap: 1rem;
+  }
+
+  @media (min-width: 520px) {
+    .form-row.two-col {
+      grid-template-columns: 1fr 1fr;
+    }
   }
 }
 
@@ -180,4 +360,45 @@
 
 .toast-enter {
   animation: toast-in 0.2s ease-out;
+}
+
+/* Dialog enter animations */
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.overlay-enter {
+  animation: overlay-in 0.15s ease-out;
+}
+
+.dialog-enter {
+  animation: dialog-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-enter,
+  .overlay-enter,
+  .dialog-enter {
+    animation: none;
+  }
+
+  html {
+    scroll-behavior: auto;
+  }
 }

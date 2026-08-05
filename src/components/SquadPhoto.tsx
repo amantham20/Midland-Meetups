@@ -8,12 +8,15 @@ import { initials } from "@/lib/utils";
 function SquadPhotoInner({
   member,
   sizeClass = "mb-4 h-28 w-28",
+  /** Size of the initials shown when there is no photo — match it to sizeClass. */
+  textClass = "text-3xl",
 }: {
   member: Pick<
     SquadMember,
     "id" | "name" | "photoBase64" | "photoMimeType" | "photoUrl"
   >;
   sizeClass?: string;
+  textClass?: string;
 }) {
   const src = getCachedPhotoSrc({
     id: member.id,
@@ -25,7 +28,7 @@ function SquadPhotoInner({
   if (!src) {
     return (
       <div
-        className={`${sizeClass} flex items-center justify-center rounded-full bg-blue text-3xl font-bold text-white`}
+        className={`${sizeClass} ${textClass} flex items-center justify-center rounded-full bg-blue font-bold text-white`}
         aria-hidden
       >
         {initials(member.name)}
@@ -54,6 +57,7 @@ export const SquadPhoto = memo(SquadPhotoInner, (prev, next) => {
     prev.member.photoBase64 === next.member.photoBase64 &&
     prev.member.photoUrl === next.member.photoUrl &&
     prev.member.name === next.member.name &&
-    prev.sizeClass === next.sizeClass
+    prev.sizeClass === next.sizeClass &&
+    prev.textClass === next.textClass
   );
 });
