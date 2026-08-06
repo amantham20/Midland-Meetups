@@ -54,3 +54,10 @@ functions/node_modules
 .firebase
 firebase-debug.log
 firebase-debug.*.log
+
+# ios — credentials are generated from .env.local, never committed
+ios/MidlandMeetups/Config/Firebase.plist
+ios/build/
+ios/DerivedData/
+xcuserdata/
+*.xcuserstate

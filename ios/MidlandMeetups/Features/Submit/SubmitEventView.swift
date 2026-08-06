@@ -1,0 +1,184 @@
+import SwiftUI
+
+/// Port of `src/app/submit/page.tsx`.
+///
+/// You can only invite audience groups you belong to — enforced here the same way
+/// the web form does, by filtering the picker down to the viewer's own groups and
+/// re-filtering the selection at submit time.
+struct SubmitEventView: View {
+    @Environment(SessionStore.self) private var session
+    @Environment(DataStore.self) private var data
+    @Environment(ToastCenter.self) private var toasts
+
+    @State private var title = ""
+    @State private var host = ""
+    @State private var date = Date()
+    @State private var time = Date()
+    @State private var location = ""
+    @State private var details = ""
+    @State private var tags: [String] = []
+    @State private var isSaving = false
+    @State private var statusMessage = ""
+
+    private var myGroups: [AudienceGroup] {
+        Audience.groups(data.groups, for: session.email)
+    }
+
+    private var canSubmit: Bool {
+        !isSaving
+            && !title.trimmingCharacters(in: .whitespaces).isEmpty
+            && !host.trimmingCharacters(in: .whitespaces).isEmpty
+            && !location.trimmingCharacters(in: .whitespaces).isEmpty
+            && !details.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    var body: some View {
+        Screen {
+            PageHeaderView(
+                kicker: "Got an idea?",
+                title: "Submit an Event",
+                lede: "Fill this out and it'll go to the organizer for review. You can invite only audience groups you're a member of."
+            )
+
+            if !AppConfig.isConfigured {
+                ConfigNotice()
+            } else if session.isRestoring {
+                EmptyNote("Checking sign-in…")
+            } else if !session.isSignedIn {
+                SignInPrompt(
+                    message: "You need an account to submit events — this keeps spam off the board without a shared password in the page source."
+                )
+            } else {
+                form
+            }
+        }
+        .navigationTitle("Submit an Event")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            if host.isEmpty { host = session.preferredName }
+        }
+        .onChange(of: myGroups) { _, groups in
+            // Drop any selection the user is no longer allowed to use.
+            let allowed = Set(groups.map(\.slug))
+            tags = tags.filter { allowed.contains($0) }
+        }
+    }
+
+    private var form: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            LabeledField(label: "Event title") {
+                TextField("e.g. Kayak Night at Sanford Lake", text: $title)
+                    .fieldBox()
+            }
+
+            LabeledField(label: "Host name") {
+                TextField("Who's running this one?", text: $host)
+                    .textContentType(.name)
+                    .fieldBox()
+            }
+
+            LabeledField(label: "Date") {
+                DatePicker("Date", selection: $date, displayedComponents: .date)
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+            }
+
+            LabeledField(label: "Time") {
+                DatePicker("Time", selection: $time, displayedComponents: .hourAndMinute)
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+            }
+
+            LabeledField(label: "Location") {
+                TextField("Where's it happening?", text: $location)
+                    .fieldBox()
+            }
+
+            LabeledField(label: "Description", hint: "what should people expect?") {
+                TextField(
+                    "What's the plan, what to bring, anything people should know.",
+                    text: $details,
+                    axis: .vertical
+                )
+                .lineLimit(4...10)
+                .fieldBox()
+            }
+
+            LabeledField(label: "Invite audience groups") {
+                if myGroups.isEmpty {
+                    Text("You're not in any audience groups yet, so this event will be visible to everyone once approved. Ask an admin to add your account email to a group if you want to invite a private audience.")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Leave all unselected for everyone. Pick a group to invite only that audience.")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                        TagPicker(groups: myGroups, selected: $tags)
+                    }
+                }
+            }
+
+            Button("Send Submission") {
+                Task { await submit() }
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(!canSubmit)
+
+            if !statusMessage.isEmpty {
+                Text(statusMessage)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .cardSurface()
+    }
+
+    private func submit() async {
+        guard let uid = session.uid else {
+            toasts.info("Sign in to submit an event.")
+            return
+        }
+        let allowed = Set(myGroups.map(\.slug))
+        let safeTags = tags.filter { allowed.contains($0) }
+
+        isSaving = true
+        statusMessage = "Sending…"
+        defer { isSaving = false }
+
+        do {
+            try await data.submitEvent(
+                title: title.trimmingCharacters(in: .whitespaces),
+                host: host.trimmingCharacters(in: .whitespaces),
+                date: EventDates.iso(from: date),
+                time: formattedTime,
+                location: location.trimmingCharacters(in: .whitespaces),
+                description: details.trimmingCharacters(in: .whitespaces),
+                userId: uid,
+                tags: safeTags
+            )
+            title = ""
+            location = ""
+            details = ""
+            tags = []
+            let message = "Event submitted! It'll show on the board once it's approved."
+            statusMessage = message
+            toasts.success(message)
+        } catch {
+            let message = "Couldn't submit that event. Check your connection and try again."
+            statusMessage = message
+            toasts.error(message)
+        }
+    }
+
+    /// Stored in the same display form the web writes, e.g. "6:30 PM".
+    private var formattedTime: String {
+        let parts = Calendar.current.dateComponents([.hour, .minute], from: time)
+        let hour = parts.hour ?? 0
+        let minute = parts.minute ?? 0
+        return EventDates.formatTime(String(format: "%02d:%02d", hour, minute))
+    }
+}
