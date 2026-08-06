@@ -19,11 +19,11 @@ struct SquadView: View {
     @State private var isSaving = false
     @State private var statusMessage = ""
 
+    // Adaptive so the board is two columns on a phone and four on an iPad.
     // `.top` keeps cards of unequal height aligned to the row's top edge instead
     // of floating in its centre.
     private let columns = [
-        GridItem(.flexible(), spacing: 14, alignment: .top),
-        GridItem(.flexible(), spacing: 14, alignment: .top),
+        GridItem(.adaptive(minimum: 155, maximum: 260), spacing: 14, alignment: .top),
     ]
 
     private var myGroups: [AudienceGroup] {

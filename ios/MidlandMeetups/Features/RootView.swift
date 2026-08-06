@@ -44,7 +44,16 @@ struct RootView: View {
     }
 }
 
-/// The standard page container: a scrolling column on the app background.
+/// Not named `Layout` — that would shadow SwiftUI's `Layout` protocol, which
+/// `FlowLayout` conforms to.
+enum PageMetrics {
+    /// Caps the text measure on iPad. The web app centers inside `max-w-[1180px]`
+    /// for the same reason — full-bleed body copy on a 13" display is unreadable.
+    static let readableWidth: CGFloat = 760
+}
+
+/// The standard page container: a scrolling column on the app background,
+/// centered and width-capped so it stays readable on iPad.
 struct Screen<Content: View>: View {
     var spacing: CGFloat = 20
     @ViewBuilder var content: Content
@@ -57,7 +66,8 @@ struct Screen<Content: View>: View {
             .padding(.horizontal, 20)
             .padding(.top, 4)
             .padding(.bottom, 44)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: PageMetrics.readableWidth, alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
         .background(Theme.bg)
         .scrollDismissesKeyboard(.interactively)

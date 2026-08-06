@@ -61,3 +61,7 @@ ios/build/
 ios/DerivedData/
 xcuserdata/
 *.xcuserstate
+
+# App Store screenshots — real squad photos and names; upload them to App Store
+# Connect rather than committing them here.
+ios/Screenshots/
