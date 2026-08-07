@@ -616,6 +616,22 @@ export async function fetchAllForAdmin(): Promise<{
 }
 
 /**
+ * Can this deployment mint custom claims at all? False when the server has no
+ * FIREBASE_SERVICE_ACCOUNT_JSON, in which case the admin UI should not offer a
+ * "Request admin claim" button that can only ever fail.
+ */
+export async function isAdminClaimEndpointConfigured(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/admin/claim", { method: "GET" });
+    if (!res.ok) return false;
+    const data = (await res.json()) as { configured?: boolean };
+    return data.configured === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Grant admin custom claim via Next.js API (no Firebase Cloud Functions / Blaze).
  * Requires server FIREBASE_SERVICE_ACCOUNT_JSON and a signed-in bootstrap UID.
  * After success, call refreshClaims() so the ID token picks up the claim.
