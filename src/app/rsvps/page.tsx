@@ -32,11 +32,13 @@ function EventRsvpCard({
   const notGoing = rows.filter((r) => r.status === "not-going");
 
   return (
-    <div className="mb-4 rounded-lg border border-border bg-surface p-5 shadow-sm">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="font-display text-lg font-bold text-ink">{event.title}</h3>
-          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
+    <div className="card p-5 sm:p-6">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="font-display text-lg font-bold text-balance text-ink">
+            {event.title}
+          </h3>
+          <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
             <span className="inline-flex items-center gap-1.5">
               {Icons.calendar} {formatDateShort(event.date)}
             </span>
@@ -45,43 +47,54 @@ function EventRsvpCard({
             </span>
           </div>
           {event.tags?.length > 0 && (
-            <div className="mt-2">
+            <div className="mt-2.5">
               <TagChips tags={event.tags} labels={tagLabels} />
             </div>
           )}
         </div>
         <StatusPill status={event.status} />
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <h4 className="mb-2 text-sm font-semibold text-green">
-            Going ({going.length})
-          </h4>
-          {going.length === 0 ? (
-            <p className="text-sm text-muted">No one yet</p>
-          ) : (
-            <ul className="space-y-1 text-sm text-ink">
-              {going.map((r) => (
-                <li key={r.id}>{r.name}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <div>
-          <h4 className="mb-2 text-sm font-semibold text-muted">
-            Can&apos;t make it ({notGoing.length})
-          </h4>
-          {notGoing.length === 0 ? (
-            <p className="text-sm text-muted">No one yet</p>
-          ) : (
-            <ul className="space-y-1 text-sm text-ink">
-              {notGoing.map((r) => (
-                <li key={r.id}>{r.name}</li>
-              ))}
-            </ul>
-          )}
-        </div>
+      <div className="grid gap-5 sm:grid-cols-2">
+        <RsvpColumn label="Going" badgeClass="badge-green" rows={going} />
+        <RsvpColumn
+          label="Can't make it"
+          badgeClass="badge-neutral"
+          rows={notGoing}
+        />
       </div>
+    </div>
+  );
+}
+
+function RsvpColumn({
+  label,
+  badgeClass,
+  rows,
+}: {
+  label: string;
+  badgeClass: string;
+  rows: Rsvp[];
+}) {
+  return (
+    <div>
+      <h4 className="mb-2.5 flex items-center gap-2 text-sm font-semibold text-ink">
+        {label}
+        <span className={`badge ${badgeClass}`}>{rows.length}</span>
+      </h4>
+      {rows.length === 0 ? (
+        <p className="text-sm text-muted">No one yet</p>
+      ) : (
+        <ul className="flex flex-wrap gap-1.5">
+          {rows.map((r) => (
+            <li
+              key={r.id}
+              className="rounded-full bg-surface-2 px-2.5 py-1 text-sm text-ink"
+            >
+              {r.name}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -172,34 +185,53 @@ export default function RsvpsPage() {
 
       {!loading && !error && visible.length > 0 && (
         <>
-          <h2 className="mb-3 font-display text-xl font-bold text-ink">Upcoming</h2>
-          {upcoming.length === 0 ? (
-            <EmptyNote>Nothing upcoming.</EmptyNote>
-          ) : (
-            upcoming.map((evt) => (
-              <EventRsvpCard
-                key={evt.id}
-                event={evt}
-                rsvps={rsvps}
-                tagLabels={tagLabels}
-              />
-            ))
-          )}
+          <section aria-labelledby="rsvps-upcoming">
+            <h2
+              id="rsvps-upcoming"
+              className="mb-4 flex items-center gap-2 font-display text-xl font-bold tracking-tight text-ink"
+            >
+              Upcoming
+              <span className="badge badge-neutral">{upcoming.length}</span>
+            </h2>
+            {upcoming.length === 0 ? (
+              <EmptyNote>Nothing upcoming.</EmptyNote>
+            ) : (
+              <div className="space-y-4">
+                {upcoming.map((evt) => (
+                  <EventRsvpCard
+                    key={evt.id}
+                    event={evt}
+                    rsvps={rsvps}
+                    tagLabels={tagLabels}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
 
           {past.length > 0 && (
-            <>
-              <h2 className="mb-3 mt-10 font-display text-xl font-bold text-ink">
+            <section
+              aria-labelledby="rsvps-past"
+              className="mt-12 border-t border-border pt-10"
+            >
+              <h2
+                id="rsvps-past"
+                className="mb-4 flex items-center gap-2 font-display text-xl font-bold tracking-tight text-ink"
+              >
                 Past
+                <span className="badge badge-neutral">{past.length}</span>
               </h2>
-              {past.map((evt) => (
-                <EventRsvpCard
-                  key={evt.id}
-                  event={evt}
-                  rsvps={rsvps}
-                  tagLabels={tagLabels}
-                />
-              ))}
-            </>
+              <div className="space-y-4">
+                {past.map((evt) => (
+                  <EventRsvpCard
+                    key={evt.id}
+                    event={evt}
+                    rsvps={rsvps}
+                    tagLabels={tagLabels}
+                  />
+                ))}
+              </div>
+            </section>
           )}
         </>
       )}

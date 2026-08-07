@@ -82,7 +82,14 @@
 
   body {
     margin: 0;
-    background: var(--bg);
+    background:
+      radial-gradient(
+        1100px 460px at 50% -180px,
+        rgba(40, 81, 227, 0.07),
+        transparent 70%
+      ),
+      var(--bg);
+    background-attachment: fixed;
     color: var(--ink);
     font-family: var(--body);
     line-height: 1.55;
@@ -91,6 +98,12 @@
 
   a {
     color: inherit;
+  }
+
+  :focus-visible {
+    outline: none;
+    box-shadow: var(--ring);
+    border-radius: var(--r-sm);
   }
 
   img {
@@ -157,6 +170,43 @@
   .field-hint {
     font-weight: 400;
     color: var(--muted);
+  }
+
+  /* File pickers render an unstyled OS button by default — dress it as a chip. */
+  .field[type="file"] {
+    padding: 0.4rem 0.5rem;
+    color: var(--muted);
+    font-size: 0.88rem;
+  }
+
+  .field[type="file"]::file-selector-button {
+    margin-right: 0.75rem;
+    border: 1.5px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface-2);
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 0.35rem 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .field[type="file"]::file-selector-button:hover {
+    background: color-mix(in srgb, var(--muted) 14%, var(--surface-2));
+  }
+
+  /* Inline text link inside prose and helper copy */
+  .link {
+    font-weight: 600;
+    color: var(--blue);
+    text-decoration: none;
+  }
+
+  .link:hover {
+    color: var(--blue-ink);
+    text-decoration: underline;
   }
 
   /* ——— Buttons ———
@@ -321,6 +371,35 @@
     color: var(--red-ink);
   }
 
+  /* ——— Alerts ——— */
+  .alert {
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    padding: 0.75rem 0.95rem;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--ink);
+  }
+
+  .alert-info {
+    border-color: color-mix(in srgb, var(--blue) 25%, transparent);
+    background: var(--blue-soft);
+    color: var(--blue-ink);
+  }
+
+  .alert-success {
+    border-color: color-mix(in srgb, var(--green) 28%, transparent);
+    background: var(--green-soft);
+    color: var(--green-ink);
+  }
+
+  .alert-danger {
+    border-color: color-mix(in srgb, var(--red) 28%, transparent);
+    background: var(--red-soft);
+    color: var(--red-ink);
+  }
+
   .form-card {
     max-width: 560px;
     border: 1px solid var(--border);
@@ -328,6 +407,12 @@
     background: var(--surface);
     padding: 1.5rem;
     box-shadow: var(--shadow-sm);
+  }
+
+  @media (min-width: 640px) {
+    .form-card {
+      padding: 1.75rem;
+    }
   }
 
   .form-row {
@@ -343,6 +428,28 @@
     .form-row.two-col {
       grid-template-columns: 1fr 1fr;
     }
+  }
+
+  /* Submit row, divided off from the fields above it */
+  .form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border);
+  }
+
+  /* ——— Section intro (kicker + heading + lede) ——— */
+  .kicker {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
   }
 }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { PageHeader } from "@/components/PageHeader";
+import { PageHeader, SectionIntro } from "@/components/PageHeader";
 import { ConfigNotice } from "@/components/ConfigNotice";
 import { EmptyNote } from "@/components/EmptyNote";
 import { useAuth } from "@/contexts/AuthContext";
@@ -100,41 +100,32 @@ export default function LorePage() {
           <EmptyNote>No memories posted yet. Be the first!</EmptyNote>
         )}
         {entries.map((mem) => (
-          <article
-            key={mem.id}
-            className="rounded-lg border border-border bg-surface p-5 shadow-sm"
-          >
-            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="font-display text-lg font-bold text-ink">
+          <article key={mem.id} className="card p-5 sm:p-6">
+            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <h2 className="font-display text-lg font-bold text-balance text-ink">
                 {mem.title}
               </h2>
               <span className="text-sm text-muted">
                 {mem.author} · {formatDateShort(mem.date)}
               </span>
             </div>
-            <p className="whitespace-pre-wrap leading-relaxed text-ink/90">
+            <p className="leading-relaxed whitespace-pre-wrap text-ink/85">
               {mem.text}
             </p>
           </article>
         ))}
       </section>
 
-      <div className="mb-6">
-        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-          Got a memory?
-        </div>
-        <h2 className="font-display text-[clamp(1.7rem,3.5vw,2.2rem)] font-bold tracking-tight">
-          Add to the Letter
-        </h2>
-        <p className="mt-2 max-w-2xl text-muted">
-          Send in your story and it&apos;ll show up here once it&apos;s been approved.
-        </p>
-      </div>
+      <SectionIntro
+        kicker="Got a memory?"
+        title="Add to the Letter"
+        lede="Send in your story and it'll show up here once it's been approved."
+      />
 
       {!user ? (
         <div className="form-card">
           <p className="text-muted">
-            <Link href="/login" className="font-semibold text-blue hover:underline">
+            <Link href="/login?next=/lore" className="link">
               Sign in
             </Link>{" "}
             to submit a memory.
@@ -179,10 +170,16 @@ export default function LorePage() {
               placeholder="Tell it like you would at the next event."
             />
           </div>
-          <button type="submit" className="btn-primary" disabled={saving}>
-            Send Memory
-          </button>
-          {status && <p className="mt-3 text-sm text-muted">{status}</p>}
+          <div className="form-actions">
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? "Sending…" : "Send memory"}
+            </button>
+            {status && !saving && (
+              <p className="text-sm text-muted" aria-live="polite">
+                {status}
+              </p>
+            )}
+          </div>
         </form>
       )}
     </>

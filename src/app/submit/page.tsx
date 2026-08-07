@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { ConfigNotice } from "@/components/ConfigNotice";
+import { EmptyNote } from "@/components/EmptyNote";
 import { TagPicker } from "@/components/TagChips";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/lib/toast-store";
@@ -110,14 +111,17 @@ export default function SubmitPage() {
       />
 
       {loading ? (
-        <p className="text-muted">Checking sign-in…</p>
+        <EmptyNote>Checking sign-in…</EmptyNote>
       ) : !user ? (
         <div className="form-card">
-          <p className="mb-4 text-muted">
+          <h2 className="font-display text-lg font-bold text-ink">
+            Sign in to submit
+          </h2>
+          <p className="mt-2 mb-5 text-muted">
             You need an account to submit events — this keeps spam off the board
             without a shared plaintext password in the page source.
           </p>
-          <Link href="/login?next=/submit" className="btn-primary">
+          <Link href="/login?next=/submit" className="btn btn-primary">
             Sign in to continue
           </Link>
         </div>
@@ -202,7 +206,7 @@ export default function SubmitPage() {
           <div className="form-row">
             <div className="field-label">Invite audience groups</div>
             {myGroups.length === 0 ? (
-              <p className="text-sm text-muted">
+              <p className="alert">
                 You&apos;re not in any audience groups yet, so this event will be
                 visible to <strong>everyone</strong> once approved. Ask an admin
                 to add your account email to a group if you want to invite a
@@ -217,10 +221,16 @@ export default function SubmitPage() {
               />
             )}
           </div>
-          <button type="submit" className="btn-primary" disabled={saving}>
-            Send Submission
-          </button>
-          {status && <p className="mt-3 text-sm text-muted">{status}</p>}
+          <div className="form-actions">
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? "Sending…" : "Send submission"}
+            </button>
+            {status && !saving && (
+              <p className="text-sm text-muted" aria-live="polite">
+                {status}
+              </p>
+            )}
+          </div>
         </form>
       )}
     </>

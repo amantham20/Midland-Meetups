@@ -70,7 +70,7 @@ export function Modal({
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
-        className={`dialog-enter relative my-auto flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-lg border border-border bg-surface shadow-lg outline-none sm:rounded-lg ${SIZES[size]}`}
+        className={`dialog-enter relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-lg border border-border bg-surface shadow-lg outline-none sm:my-auto sm:rounded-lg ${SIZES[size]}`}
       >
         <div className="flex items-start gap-4 border-b border-border px-5 py-4 sm:px-6">
           <div className="min-w-0 flex-1">

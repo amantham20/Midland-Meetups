@@ -145,7 +145,7 @@ export function Header() {
   );
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-white/86 backdrop-blur-[10px]">
+    <header className="sticky top-0 z-50 border-b border-border bg-surface/85 backdrop-blur-[10px]">
       <div className="mx-auto flex max-w-[1180px] items-center gap-3 px-6 py-4">
         <Link
           href="/"

@@ -18,6 +18,7 @@ function LoginForm() {
   const [mode, setMode] = useState<"signin" | "register">("signin");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   if (!configured) {
     return <ConfigNotice />;
@@ -58,10 +59,40 @@ function LoginForm() {
     }
   }
 
+  const register = mode === "register";
+
   return (
     <div className="form-card max-w-md">
+      <div className="mb-6 grid grid-cols-2 gap-1 rounded-full border border-border bg-surface-2 p-1">
+        {(["signin", "register"] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            aria-pressed={mode === m}
+            onClick={() => {
+              setMode(m);
+              setError("");
+            }}
+            className={[
+              "rounded-full px-3 py-2 text-sm font-semibold transition-colors",
+              mode === m
+                ? "bg-surface text-ink shadow-sm"
+                : "text-muted hover:text-ink",
+            ].join(" ")}
+          >
+            {m === "signin" ? "Sign in" : "Create account"}
+          </button>
+        ))}
+      </div>
+
+      {error && (
+        <p className="alert alert-danger mb-5" role="alert">
+          {error}
+        </p>
+      )}
+
       <form onSubmit={(e) => void onEmail(e)}>
-        {mode === "register" && (
+        {register && (
           <div className="form-row">
             <label className="field-label" htmlFor="displayName">
               Display name
@@ -86,54 +117,47 @@ function LoginForm() {
             type="email"
             required
             autoComplete="email"
+            placeholder="you@example.com"
           />
         </div>
         <div className="form-row">
           <label className="field-label" htmlFor="password">
-            Password
+            Password{" "}
+            {register && (
+              <span className="field-hint">— at least 6 characters</span>
+            )}
           </label>
-          <input
-            className="field"
-            id="password"
-            name="password"
-            type="password"
-            required
-            minLength={6}
-            autoComplete={mode === "register" ? "new-password" : "current-password"}
-          />
+          <div className="relative">
+            <input
+              className="field pr-20"
+              id="password"
+              name="password"
+              type={showPassword ? "text" : "password"}
+              required
+              minLength={6}
+              autoComplete={register ? "new-password" : "current-password"}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="btn btn-ghost btn-sm absolute inset-y-1 right-1"
+            >
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </div>
         </div>
-        <button type="submit" className="btn-primary w-full" disabled={busy}>
-          {mode === "register" ? "Create account" : "Sign in"}
-        </button>
+        <div className="form-actions">
+          <button type="submit" className="btn btn-primary w-full" disabled={busy}>
+            {busy
+              ? register
+                ? "Creating account…"
+                : "Signing in…"
+              : register
+                ? "Create account"
+                : "Sign in"}
+          </button>
+        </div>
       </form>
-
-      <p className="mt-4 text-sm text-muted">
-        {mode === "signin" ? (
-          <>
-            New here?{" "}
-            <button
-              type="button"
-              className="font-semibold text-blue"
-              onClick={() => setMode("register")}
-            >
-              Create an account
-            </button>
-          </>
-        ) : (
-          <>
-            Already have an account?{" "}
-            <button
-              type="button"
-              className="font-semibold text-blue"
-              onClick={() => setMode("signin")}
-            >
-              Sign in
-            </button>
-          </>
-        )}
-      </p>
-
-      {error && <p className="mt-3 text-sm text-red">{error}</p>}
     </div>
   );
 }

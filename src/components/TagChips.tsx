@@ -1,5 +1,7 @@
 "use client";
 
+import { CheckIcon } from "./Icons";
+
 export function TagChips({
   tags,
   labels,
@@ -19,10 +21,7 @@ export function TagChips({
   return (
     <div className="flex flex-wrap gap-1.5">
       {tags.map((t) => (
-        <span
-          key={t}
-          className="inline-flex items-center rounded-full bg-blue/10 px-2.5 py-0.5 text-xs font-semibold text-blue"
-        >
+        <span key={t} className="badge badge-blue">
           {labels?.[t] || t}
         </span>
       ))}
@@ -71,9 +70,10 @@ export function TagPicker({
               key={g.slug}
               htmlFor={`${idPrefix}-${g.slug}`}
               className={[
-                "inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold transition",
+                "inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold transition select-none",
+                "has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-blue/30",
                 on
-                  ? "border-blue bg-blue text-white"
+                  ? "border-blue bg-blue text-white shadow-sm"
                   : "border-border bg-surface text-muted hover:bg-surface-2 hover:text-ink",
               ].join(" ")}
             >
@@ -84,6 +84,7 @@ export function TagPicker({
                 checked={on}
                 onChange={() => toggle(g.slug)}
               />
+              {on && <CheckIcon className="h-3.5 w-3.5" />}
               {g.name}
             </label>
           );
