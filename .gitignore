@@ -54,3 +54,14 @@ functions/node_modules
 .firebase
 firebase-debug.log
 firebase-debug.*.log
+
+# ios — credentials are generated from .env.local, never committed
+ios/MidlandMeetups/Config/Firebase.plist
+ios/build/
+ios/DerivedData/
+xcuserdata/
+*.xcuserstate
+
+# App Store screenshots — real squad photos and names; upload them to App Store
+# Connect rather than committing them here.
+ios/Screenshots/

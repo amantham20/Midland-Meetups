@@ -44,6 +44,7 @@ storage.rules
 public/manifest.json
 public/firebase-messaging-sw.js
 vercel.json            # optional daily cron for reminders
+ios/                   # native SwiftUI app (see §10)
 _legacy/               # previous HTML/JS/CSS site
 ```
 
@@ -213,6 +214,67 @@ See [`conversions/README.md`](conversions/README.md). New RSVPs still need real 
 ## 9. Local development without Firebase
 
 If env keys are missing, pages show a **Connect Firebase** notice instead of crashing.
+
+---
+
+## 10. Native iOS app
+
+`ios/` is a native SwiftUI app for the same Firestore project — not a web view. It
+shares no code with the Next.js app; the domain types, audience rules, and date
+helpers are ported to Swift, and the design tokens from `globals.css` are ported to
+`ios/MidlandMeetups/Design/Theme.swift`.
+
+**Why REST instead of the Firebase iOS SDK.** That SDK needs a
+`GoogleService-Info.plist` from an *iOS* app registered in the Firebase console;
+this project only has web credentials. Firebase's REST APIs accept exactly those —
+the web API key for signed-out reads, a Firebase ID token for everything else — and
+Firestore evaluates the same `firestore.rules` either way. No third-party
+dependencies, no CocoaPods, no SwiftPM.
+
+### Build & run
+
+```bash
+./ios/Scripts/generate-firebase-config.sh
+```
+
+That reads `.env.local` (it finds the main checkout automatically when you're in a
+git worktree) and writes `ios/MidlandMeetups/Config/Firebase.plist`, which is
+gitignored just like `.env.local`. Without it the app shows the same **Connect
+Firebase** notice the web app does. Then open `ios/MidlandMeetups.xcodeproj` and run,
+or from the command line:
+
+```bash
+xcodebuild -project ios/MidlandMeetups.xcodeproj -scheme MidlandMeetups -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
+```
+
+### What's there
+
+| Web page | iOS |
+|----------|-----|
+| `/` Happenings | Happenings tab — next 7 days, status ticker, event detail with RSVP |
+| `/rsvps` | RSVPs tab — upcoming / past, going and can't-make-it lists |
+| `/lore` | Lore tab — archive + submit a memory |
+| `/squad` | Squad tab — member grid, join/edit your profile with a photo picker |
+| `/submit` | More → Submit an Event, and the **+** on Happenings |
+| `/login` | More → Sign in (Identity Toolkit REST; session in the keychain) |
+| `/admin` | More → Admin queue — approvals, event status, audience groups |
+| Game link | More → Game (opens in the browser) |
+
+Native additions: **Add to Calendar** writes straight into the user's calendar via
+EventKit (write-only permission — it never reads existing events), dark mode, and
+pull-to-refresh.
+
+### Differences from the web app
+
+- **No realtime.** Firestore's live channel is gRPC-only, so `onSnapshot` becomes a
+  refresh on appear, on pull-to-refresh, on foreground, and immediately after the
+  app's own writes.
+- **No push notifications.** The web build's FCM/`fcmTokens` flow would need an APNs
+  key and an iOS app registered in Firebase; the daily reminder cron still runs
+  server-side and emails/pushes on the web as before.
+- **Admin email → uid linking is web-only.** That path calls a `firebase-admin`
+  Next.js route, and the app has no server. Squad ownership in `firestore.rules` is
+  matched by email, so admin editing works regardless.
 
 ---
 
