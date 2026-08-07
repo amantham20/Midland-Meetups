@@ -113,6 +113,13 @@ export const AlertIcon = ({ className }: IconProps) => (
   </Glyph>
 );
 
+export const BellIcon = ({ className }: IconProps) => (
+  <Glyph className={className}>
+    <path d="M18 9a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16S18 14 18 9z" />
+    <path d="M10.5 19a2 2 0 0 0 3 0" />
+  </Glyph>
+);
+
 export const SparkIcon = ({ className }: IconProps) => (
   <Glyph className={className}>
     <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" />

@@ -10,6 +10,7 @@ import {
   isFirebaseConfigured,
 } from "@/lib/firebase/client";
 import { saveFcmToken } from "@/lib/firebase/data";
+import { BellIcon } from "./Icons";
 
 const storageKey = (uid: string) => `mm-fcm-enabled:${uid}`;
 
@@ -149,21 +150,29 @@ export function EnableNotifications() {
   }
 
   return (
-    <div className="mb-6 rounded-lg border border-border bg-surface px-4 py-3 text-sm shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-muted">
-          Get a push reminder the day before events you RSVP to.
-        </p>
+    <div className="card mb-8 p-4 sm:px-5">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-blue/10 text-blue">
+          <BellIcon className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-ink">
+            Turn on event reminders
+          </p>
+          <p className="text-sm text-muted">
+            Get a push the day before events you RSVP to.
+          </p>
+        </div>
         <button
           type="button"
           disabled={busy}
           onClick={() => void enable()}
-          className="rounded-full bg-ink px-4 py-2 font-semibold text-surface disabled:opacity-60"
+          className="btn btn-primary"
         >
           {busy ? "Enabling…" : "Enable reminders"}
         </button>
       </div>
-      {msg && <p className="mt-2 text-muted">{msg}</p>}
+      {msg && <p className="mt-3 text-sm text-muted">{msg}</p>}
     </div>
   );
 }

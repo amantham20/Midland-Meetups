@@ -30,52 +30,57 @@ export function EventCard({
     <button
       type="button"
       onClick={() => onOpen(event.id)}
-      className="flex w-full flex-col rounded-lg border border-border bg-surface p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+      className="card card-hover group flex h-full w-full flex-col p-5 text-left transition-transform hover:-translate-y-0.5"
     >
       <div className="mb-3 flex items-start justify-between gap-3">
-        <h3 className="font-display text-lg font-bold leading-snug text-ink">
+        <h3 className="font-display text-lg leading-snug font-bold text-balance text-ink transition-colors group-hover:text-blue">
           {event.title}
         </h3>
         <StatusPill status={event.status} />
       </div>
+
       {event.tags?.length > 0 && (
-        <div className="mb-2">
+        <div className="mb-3">
           <TagChips tags={event.tags} labels={tagLabels} />
         </div>
       )}
-      <div className="mb-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
-        <span className="inline-flex items-center gap-1.5">
-          {Icons.calendar} {formatDateShort(event.date)}
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          {Icons.clock} {formatTimeDisplay(event.time)}
-        </span>
+
+      <div className="mb-4 space-y-1.5 text-sm text-muted">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          <span className="inline-flex items-center gap-1.5">
+            {Icons.calendar} {formatDateShort(event.date)}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            {Icons.clock} {formatTimeDisplay(event.time)}
+          </span>
+        </div>
+        <div className="flex items-start gap-1.5">
+          {Icons.pin}
+          <span className="min-w-0 flex-1 truncate">{event.location}</span>
+        </div>
       </div>
-      <div className="mb-3 text-sm text-muted">
-        <span className="inline-flex items-center gap-1.5">
-          {Icons.pin} {event.location}
-        </span>
-      </div>
-      <p className="mb-4 line-clamp-3 flex-1 text-sm leading-relaxed text-ink/80">
+
+      <p className="mb-5 line-clamp-3 flex-1 text-sm leading-relaxed text-ink/75">
         {event.description}
       </p>
-      <div className="flex items-center justify-between gap-3 border-t border-border pt-3 text-sm">
-        <span className="text-muted">Hosted by {event.host}</span>
-        <span
-          className={
-            mine?.status === "going"
-              ? "font-semibold text-green"
-              : "font-medium text-muted"
-          }
-        >
-          {mine
-            ? mine.status === "going"
-              ? "✓ You're going"
-              : "Not going"
-            : goingCount > 0
-              ? `${goingCount} going`
-              : "Tap for details"}
+
+      <div className="mt-auto flex items-center justify-between gap-3 border-t border-border pt-3.5 text-sm">
+        <span className="min-w-0 truncate text-muted">
+          Hosted by <span className="font-medium text-ink">{event.host}</span>
         </span>
+        {mine ? (
+          <span
+            className={`badge ${mine.status === "going" ? "badge-green" : "badge-neutral"}`}
+          >
+            {mine.status === "going" ? "You're going" : "Not going"}
+          </span>
+        ) : (
+          <span className="shrink-0 font-medium text-muted">
+            {goingCount > 0
+              ? `${goingCount} going`
+              : "No RSVPs yet"}
+          </span>
+        )}
       </div>
     </button>
   );

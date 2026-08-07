@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import type { MeetupEvent, Rsvp, RsvpStatus } from "@/lib/types";
 import {
@@ -11,8 +11,24 @@ import {
 import { setRsvp } from "@/lib/firebase/data";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
-import { Icons } from "./Icons";
+import { Modal } from "./Modal";
+import { CheckIcon, Icons, XIcon } from "./Icons";
 import { StatusPill } from "./StatusPill";
+
+function MetaRow({
+  icon,
+  children,
+}: {
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-2.5 text-sm">
+      <span className="mt-0.5 text-muted">{icon}</span>
+      <span className="min-w-0 flex-1 text-ink">{children}</span>
+    </div>
+  );
+}
 
 function EventModalBody({
   event,
@@ -29,22 +45,12 @@ function EventModalBody({
   const [statusMsg, setStatusMsg] = useState("");
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
-    };
-  }, [onClose]);
-
   const mine = user
     ? rsvps.find((r) => r.eventId === event.id && r.userId === user.uid)
     : null;
-  const going = rsvps.filter((r) => r.eventId === event.id && r.status === "going").length;
+  const going = rsvps.filter(
+    (r) => r.eventId === event.id && r.status === "going",
+  ).length;
   const notGoing = rsvps.filter(
     (r) => r.eventId === event.id && r.status === "not-going",
   ).length;
@@ -90,129 +96,123 @@ function EventModalBody({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-end justify-center bg-ink/40 p-4 sm:items-center"
-      role="presentation"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="event-modal-title"
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-surface p-6 shadow-lg"
-      >
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <div>
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              <StatusPill status={event.status} />
-            </div>
-            <h2 id="event-modal-title" className="font-display text-2xl font-bold text-ink">
-              {event.title}
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-sm border border-border px-2 py-1 text-sm text-muted hover:bg-surface-2"
-            aria-label="Close"
+    <Modal
+      open
+      onClose={onClose}
+      title={event.title}
+      description={`Hosted by ${event.host}`}
+      size="md"
+      footer={
+        <>
+          <a
+            href={buildGoogleCalendarUrl(event)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-secondary"
           >
-            ✕
+            {Icons.calendar} Add to Google Calendar
+          </a>
+          <button type="button" className="btn btn-ghost" onClick={onClose}>
+            Close
           </button>
+        </>
+      }
+    >
+      {event.status !== "confirmed" && (
+        <div className="mb-4">
+          <StatusPill status={event.status} />
+        </div>
+      )}
+
+      <div className="space-y-2.5 rounded-md border border-border bg-surface-2/50 px-4 py-3.5">
+        <MetaRow icon={Icons.calendar}>{formatDateLong(event.date)}</MetaRow>
+        <MetaRow icon={Icons.clock}>{formatTimeDisplay(event.time)}</MetaRow>
+        <MetaRow icon={Icons.pin}>{event.location}</MetaRow>
+      </div>
+
+      {event.statusNote && (
+        <p className="alert alert-info mt-4">
+          <strong className="font-semibold">Update:</strong> {event.statusNote}
+        </p>
+      )}
+
+      <p className="mt-5 text-[0.98rem] leading-relaxed whitespace-pre-wrap text-ink/90">
+        {event.description}
+      </p>
+
+      <div className="mt-6 rounded-lg border border-border bg-surface-2/40 p-4">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="font-display text-base font-bold text-ink">
+            Are you going?
+          </h3>
+          <span className="text-sm tabular-nums text-muted">
+            {`${going} going · ${notGoing} can’t make it`}
+          </span>
         </div>
 
-        <div className="mb-4 space-y-2 text-sm text-muted">
-          <div className="flex items-center gap-2">
-            {Icons.calendar} {formatDateLong(event.date)}
-          </div>
-          <div className="flex items-center gap-2">
-            {Icons.clock} {formatTimeDisplay(event.time)}
-          </div>
-          <div className="flex items-center gap-2">
-            {Icons.pin} {event.location}
-          </div>
-          <div>Hosted by {event.host}</div>
-        </div>
-
-        {event.statusNote && (
-          <p className="mb-4 rounded-md bg-surface-2 px-3 py-2 text-sm text-ink">
-            <strong>Update:</strong> {event.statusNote}
+        {!user ? (
+          <p className="text-sm text-muted">
+            <Link href="/login" className="link">
+              Sign in
+            </Link>{" "}
+            to RSVP and get event reminders.
           </p>
+        ) : (
+          <>
+            <label className="field-label" htmlFor="rsvp-name">
+              Name shown on RSVPs
+            </label>
+            <input
+              id="rsvp-name"
+              type="text"
+              className="field"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Your name"
+            />
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                disabled={saving}
+                aria-pressed={mine?.status === "going"}
+                onClick={() => void handleRsvp("going")}
+                className={
+                  mine?.status === "going"
+                    ? "btn bg-green text-white shadow-sm"
+                    : "btn btn-secondary"
+                }
+              >
+                <CheckIcon className="h-4 w-4" />
+                I&apos;m going
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                aria-pressed={mine?.status === "not-going"}
+                onClick={() => void handleRsvp("not-going")}
+                className={
+                  mine?.status === "not-going"
+                    ? "btn bg-ink text-white shadow-sm"
+                    : "btn btn-secondary"
+                }
+              >
+                <XIcon className="h-4 w-4" />
+                Can&apos;t make it
+              </button>
+            </div>
+          </>
         )}
 
-        <p className="mb-6 whitespace-pre-wrap text-[0.98rem] leading-relaxed text-ink">
-          {event.description}
+        <p className="mt-3 text-sm text-muted" aria-live="polite">
+          {statusMsg ||
+            (mine
+              ? "Tap your answer again to clear it."
+              : going + notGoing === 0
+                ? "Be the first to say you're in."
+                : "")}
         </p>
-
-        <a
-          href={buildGoogleCalendarUrl(event)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mb-6 inline-flex text-sm font-semibold text-blue hover:text-blue-ink"
-        >
-          Add to Google Calendar
-        </a>
-
-        <div className="rounded-lg border border-border bg-surface-2/50 p-4">
-          <div className="mb-2 text-sm font-semibold text-ink">Are you going?</div>
-          {!user ? (
-            <p className="text-sm text-muted">
-              <Link href="/login" className="font-semibold text-blue hover:underline">
-                Sign in
-              </Link>{" "}
-              to RSVP and get event reminders.
-            </p>
-          ) : (
-            <>
-              <label className="mb-2 block text-sm text-muted" htmlFor="rsvp-name">
-                Name shown on RSVPs
-              </label>
-              <input
-                id="rsvp-name"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Your name"
-                className="mb-3 w-full rounded-md border border-border bg-surface px-3 py-2 text-ink outline-none focus:border-blue"
-              />
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() => void handleRsvp("going")}
-                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                    mine?.status === "going"
-                      ? "bg-green text-white"
-                      : "border border-border bg-surface text-ink hover:bg-surface-2"
-                  }`}
-                >
-                  I&apos;m going
-                </button>
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() => void handleRsvp("not-going")}
-                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                    mine?.status === "not-going"
-                      ? "bg-muted text-white"
-                      : "border border-border bg-surface text-ink hover:bg-surface-2"
-                  }`}
-                >
-                  Can&apos;t make it
-                </button>
-              </div>
-            </>
-          )}
-          <p className="mt-3 text-sm text-muted">
-            {statusMsg ||
-              (going > 0 || notGoing > 0
-                ? `${going} going · ${notGoing} can't make it`
-                : "Be the first to say you're in.")}
-          </p>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -228,6 +228,11 @@ export function EventModal({
   if (!event) return null;
   // key remounts local form state when switching events
   return (
-    <EventModalBody key={event.id} event={event} rsvps={rsvps} onClose={onClose} />
+    <EventModalBody
+      key={event.id}
+      event={event}
+      rsvps={rsvps}
+      onClose={onClose}
+    />
   );
 }

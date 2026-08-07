@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { PageHeader } from "@/components/PageHeader";
+import { PageHeader, SectionIntro } from "@/components/PageHeader";
 import { ConfigNotice } from "@/components/ConfigNotice";
 import { EmptyNote } from "@/components/EmptyNote";
 import { Icons } from "@/components/Icons";
@@ -261,65 +261,75 @@ export default function SquadClient() {
         {members.map((m) => (
           <article
             key={m.id}
-            className="flex flex-col items-center rounded-lg border border-border bg-surface p-5 text-center shadow-sm"
+            className="card flex h-full flex-col items-center p-6 text-center"
           >
-            <SquadPhoto member={m} sizeClass="mb-4 h-28 w-28 mx-auto" />
-            <h3 className="w-full font-display text-lg font-bold text-ink">
+            <SquadPhoto
+              member={m}
+              sizeClass="mb-4 h-24 w-24 ring-4 ring-surface-2"
+              textClass="text-2xl"
+            />
+            <h3 className="font-display text-lg font-bold text-ink">
               {m.name}
             </h3>
-            <div className="w-full text-sm font-medium text-muted">
-              {m.occupation}
-            </div>
+            <div className="text-sm font-medium text-muted">{m.occupation}</div>
             {(m.age || m.gender) && (
-              <div className="mt-1 w-full text-sm text-muted">
-                {[m.age, m.gender].filter(Boolean).join(" · ")}
+              <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+                {[m.age, m.gender].filter(Boolean).map((bit) => (
+                  <span key={bit} className="badge badge-neutral">
+                    {bit}
+                  </span>
+                ))}
               </div>
             )}
-            <p className="mt-3 w-full text-sm leading-relaxed text-ink/85">
-              {m.bio}
-            </p>
+            <p className="mt-4 text-sm leading-relaxed text-ink/80">{m.bio}</p>
             {m.socialLink && (
-              <a
-                href={m.socialLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-3 inline-flex items-center justify-center gap-1.5 text-sm font-semibold text-blue hover:text-blue-ink"
-              >
-                {Icons.link} Follow
-              </a>
+              <div className="mt-auto pt-5">
+                <a
+                  href={m.socialLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-soft btn-sm"
+                >
+                  {Icons.link} Follow
+                </a>
+              </div>
             )}
           </article>
         ))}
       </section>
 
-      <div className="mb-6">
-        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-          Your profile
-        </div>
-        <h2 className="font-display text-[clamp(1.7rem,3.5vw,2.2rem)] font-bold tracking-tight">
-          {myProfile ? "Edit your profile" : "Join the Squad"}
-        </h2>
-        <p className="mt-2 max-w-2xl text-muted">
-          {myProfile
+      <SectionIntro
+        kicker="Your profile"
+        title={myProfile ? "Edit your profile" : "Join the Squad"}
+        lede={
+          myProfile
             ? myProfile.approved
               ? "Update your details anytime. Keep your email current so you stay in the right event groups."
               : "Your profile is waiting for approval — you can still edit it. It will appear on the board once approved."
-            : "Tell us a bit about yourself. A photo is optional. Use the same email as your account so admins can connect you to audience groups."}
-        </p>
-        {myProfile && myGroups.length > 0 && (
-          <p className="mt-2 text-sm font-semibold text-blue">
-            Your groups: {myGroups.map((g) => g.name).join(", ")}
+            : "Tell us a bit about yourself. A photo is optional. Use the same email as your account so admins can connect you to audience groups."
+        }
+      >
+        {myProfile && !myProfile.approved && (
+          <p className="alert alert-info mt-4 max-w-2xl">
+            Waiting on an admin to approve this profile.
           </p>
         )}
-      </div>
+        {myProfile && myGroups.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted">Your groups:</span>
+            {myGroups.map((g) => (
+              <span key={g.slug} className="badge badge-blue">
+                {g.name}
+              </span>
+            ))}
+          </div>
+        )}
+      </SectionIntro>
 
       {!user ? (
         <div className="form-card">
           <p className="text-muted">
-            <Link
-              href="/login?next=/squad"
-              className="font-semibold text-blue hover:underline"
-            >
+            <Link href="/login?next=/squad" className="link">
               Sign in
             </Link>{" "}
             to join or edit your squad profile.
@@ -442,28 +452,38 @@ export default function SquadClient() {
               </span>
             </label>
             {myProfile && (
-              <div className="mb-2">
-                <SquadPhoto member={myProfile} sizeClass="h-20 w-20" />
+              <div className="mb-3">
+                <SquadPhoto
+                  member={myProfile}
+                  sizeClass="h-20 w-20 ring-4 ring-surface-2"
+                  textClass="text-xl"
+                />
               </div>
             )}
             <input
+              className="field"
               id="sq-photo"
               name="photo"
               type="file"
               accept="image/jpeg,image/png"
-              className="block w-full text-sm text-muted"
             />
           </div>
-          <button type="submit" className="btn-primary" disabled={saving}>
-            {saving
-              ? myProfile
-                ? "Saving…"
-                : "Sending…"
-              : myProfile
-                ? "Save profile"
-                : "Send Profile"}
-          </button>
-          {status && <p className="mt-3 text-sm text-muted">{status}</p>}
+          <div className="form-actions">
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving
+                ? myProfile
+                  ? "Saving…"
+                  : "Sending…"
+                : myProfile
+                  ? "Save profile"
+                  : "Send profile"}
+            </button>
+            {status && !saving && (
+              <p className="text-sm text-muted" aria-live="polite">
+                {status}
+              </p>
+            )}
+          </div>
         </form>
       )}
     </>

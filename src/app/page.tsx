@@ -8,6 +8,7 @@ import { EventModal } from "@/components/EventModal";
 import { ConfigNotice } from "@/components/ConfigNotice";
 import { EmptyNote } from "@/components/EmptyNote";
 import { EnableNotifications } from "@/components/EnableNotifications";
+import { AlertIcon } from "@/components/Icons";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   subscribeApprovedEvents,
@@ -108,15 +109,21 @@ export default function HappeningsPage() {
       <EnableNotifications />
 
       {tickerUpdates.length > 0 && (
-        <div className="mb-6 overflow-hidden rounded-md border border-border bg-surface">
-          <div className="flex flex-wrap gap-3 px-4 py-3 text-sm">
-            {tickerUpdates.map((e) => (
-              <span key={e.id} className="text-muted">
-                <strong className="text-ink">{e.title}</strong> —{" "}
-                {STATUS_LABEL[e.status]}
-                {e.statusNote ? `: ${e.statusNote}` : ""}
-              </span>
-            ))}
+        <div className="card mb-8 flex items-start gap-4 p-4 sm:px-5">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-yellow/20 text-yellow-ink">
+            <AlertIcon className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-ink">Heads up</p>
+            <ul className="mt-1.5 space-y-1 text-sm text-muted">
+              {tickerUpdates.map((e) => (
+                <li key={e.id}>
+                  <span className="font-medium text-ink">{e.title}</span> —{" "}
+                  {STATUS_LABEL[e.status]}
+                  {e.statusNote ? `: ${e.statusNote}` : ""}
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       )}
@@ -126,13 +133,8 @@ export default function HappeningsPage() {
       {!loading && !error && weekEvents.length === 0 && (
         <EmptyNote>
           Nothing on the board for the next 7 days
-          {!user
-            ? " (sign in to see tagged group events)."
-            : "."}{" "}
-          <Link
-            href="/submit"
-            className="font-semibold text-blue hover:underline"
-          >
+          {!user ? " (sign in to see tagged group events)." : "."}{" "}
+          <Link href="/submit" className="link">
             Submit an event
           </Link>{" "}
           to get something posted.
