@@ -94,6 +94,13 @@ export function buildGoogleCalendarUrl(evt: MeetupEvent): string {
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
+/** Display time ("6:30 PM") → `<input type="time">` value ("18:30"). */
+export function toTimeInputValue(time: string): string {
+  const hm = parseTimeToHM(time);
+  if (!hm) return "";
+  return `${String(hm.h).padStart(2, "0")}:${String(hm.m).padStart(2, "0")}`;
+}
+
 export function formatTimeDisplay(time: string): string {
   const hm = parseTimeToHM(time);
   if (!hm) return time;
@@ -167,4 +174,20 @@ export function isAdminUid(uid: string | null | undefined): boolean {
 
 export function initials(name: string): string {
   return String(name || "?").trim().charAt(0).toUpperCase() || "?";
+}
+
+/**
+ * Name to stamp on things the signed-in account posts (events, memories, RSVPs).
+ * Registration asks for a display name, so that's the normal case; older
+ * accounts fall back to a tidied-up email local part.
+ */
+export function accountDisplayName(
+  user: { displayName?: string | null; email?: string | null } | null | undefined,
+): string {
+  const name = (user?.displayName || "").trim();
+  if (name) return name;
+  const local = (user?.email || "").split("@")[0] || "";
+  const cleaned = local.replace(/[._-]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  return cleaned.replace(/\b\w/g, (c) => c.toUpperCase());
 }

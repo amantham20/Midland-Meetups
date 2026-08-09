@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { ConfigNotice } from "@/components/ConfigNotice";
 import { EmptyNote } from "@/components/EmptyNote";
+import { AttributionField } from "@/components/AttributionField";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import {
@@ -13,7 +14,7 @@ import {
 } from "@/lib/firebase/data";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 import type { Memory } from "@/lib/types";
-import { formatDateShort } from "@/lib/utils";
+import { accountDisplayName, formatDateShort } from "@/lib/utils";
 
 export default function LorePage() {
   const { user, configured } = useAuth();
@@ -23,6 +24,10 @@ export default function LorePage() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
+  const [byOther, setByOther] = useState(false);
+  const [otherAuthor, setOtherAuthor] = useState("");
+
+  const myName = accountDisplayName(user);
 
   useEffect(() => {
     if (!isFirebaseConfigured()) return;
@@ -48,16 +53,26 @@ export default function LorePage() {
     }
     const form = e.currentTarget;
     const fd = new FormData(form);
+    // Credited to you unless you said it's someone else's story.
+    const author = (byOther ? otherAuthor : myName).trim();
+    if (!author) {
+      const msg = "Add a name to credit the story to.";
+      setStatus(msg);
+      toast.error(msg);
+      return;
+    }
     setSaving(true);
     setStatus("Sending…");
     try {
       await submitMemory({
         title: String(fd.get("title") || "").trim(),
-        author: String(fd.get("author") || "").trim(),
+        author,
         text: String(fd.get("text") || "").trim(),
         userId: user.uid,
       });
       form.reset();
+      setByOther(false);
+      setOtherAuthor("");
       const msg =
         "Sent! Your story is in for review and will show up once approved.";
       setStatus(msg);
@@ -154,19 +169,20 @@ export default function LorePage() {
               placeholder="e.g. The Great Canoe Mishap"
             />
           </div>
-          <div className="form-row">
-            <label className="field-label" htmlFor="mem-author">
-              Your name
-            </label>
-            <input
-              className="field"
-              id="mem-author"
-              name="author"
-              required
-              defaultValue={user.displayName || ""}
-              placeholder="Who's telling it"
-            />
-          </div>
+          <AttributionField
+            idPrefix="mem-author"
+            label="Storyteller"
+            myName={myName}
+            selfHint="— your account name"
+            toggleLabel="Someone else is telling it"
+            otherLabel="Their name"
+            otherPlaceholder="Who's telling it"
+            byOther={byOther}
+            onByOtherChange={setByOther}
+            otherName={otherAuthor}
+            onOtherNameChange={setOtherAuthor}
+            disabled={saving}
+          />
           <div className="form-row">
             <label className="field-label" htmlFor="mem-text">
               What happened

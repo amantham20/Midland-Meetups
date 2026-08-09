@@ -11,14 +11,20 @@ import Observation
 @Observable
 final class DataStore {
     var events: [MeetupEvent] = []
+    /// The signed-in account's own submissions, pending ones included.
+    var myEvents: [MeetupEvent] = []
     var rsvps: [Rsvp] = []
     var memories: [Memory] = []
     var squad: [SquadMember] = []
     var groups: [AudienceGroup] = []
 
     var eventsError: String?
+    var myEventsError: String?
     var memoriesError: String?
     var squadError: String?
+
+    /// Whose events `myEvents` holds — `nil` until the first load.
+    private(set) var myEventsUserId: String?
 
     private(set) var hasLoadedFeed = false
     private(set) var isRefreshing = false
@@ -72,6 +78,29 @@ final class DataStore {
             eventsError = nil
         } catch {
             eventsError = "Couldn't load events. Check your connection and Firestore rules."
+        }
+    }
+
+    /// Everything this account submitted, approved or not — the pending ones
+    /// never show up in the public feed. One `whereEqualTo` and no `order`, so
+    /// it satisfies the `createdBy == uid` read rule without a composite index.
+    func loadMyEvents(userId: String) async {
+        guard let client else { return }
+        if myEventsUserId != userId {
+            myEvents = []
+            myEventsError = nil
+        }
+        defer { myEventsUserId = userId }
+        do {
+            let query = FirestoreQuery("events")
+                .whereEqualTo("createdBy", .string(userId))
+            myEvents = try await client.run(query)
+                .map(MeetupEvent.init(document:))
+                .sorted { $0.date < $1.date }
+            myEventsError = nil
+        } catch {
+            myEvents = []
+            myEventsError = "Couldn't load your events."
         }
     }
 
@@ -321,6 +350,44 @@ final class DataStore {
         try await client.merge("events", eventId, fields: [
             "tags": .array(tags.map { .string($0) }),
         ])
+    }
+
+    /// Full edit of an event, for the host who submitted it or an admin —
+    /// `updateEventDetails` on the web. `approved` and `createdBy` are never
+    /// written, so a host can't self-approve or reassign an event.
+    ///
+    /// Pass `resetReminder` when the slot moved so the day-before push fires
+    /// again for the new date.
+    func updateEventDetails(
+        eventId: String,
+        title: String,
+        host: String,
+        date: String,
+        time: String,
+        location: String,
+        description: String,
+        status: EventStatus,
+        statusNote: String,
+        tags: [String],
+        resetReminder: Bool
+    ) async throws {
+        let client = try requireClient()
+        var fields: [String: FirestoreValue] = [
+            "title": .string(title.trimmingCharacters(in: .whitespaces)),
+            "host": .string(host.trimmingCharacters(in: .whitespaces)),
+            "date": .string(date),
+            "time": .string(time),
+            "location": .string(location.trimmingCharacters(in: .whitespaces)),
+            "description": .string(description.trimmingCharacters(in: .whitespaces)),
+            "status": .string(status.rawValue),
+            "statusNote": .string(statusNote.trimmingCharacters(in: .whitespacesAndNewlines)),
+            "tags": .array(tags.map { .string($0) }),
+            "updatedAt": .timestamp(Date()),
+        ]
+        if resetReminder {
+            fields["reminderSent"] = .boolean(false)
+        }
+        try await client.merge("events", eventId, fields: fields)
     }
 
     @discardableResult

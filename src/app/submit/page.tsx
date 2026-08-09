@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { ConfigNotice } from "@/components/ConfigNotice";
+import { AttributionField } from "@/components/AttributionField";
 import { TagPicker } from "@/components/TagChips";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/lib/toast-store";
@@ -11,7 +12,8 @@ import { submitEvent, subscribeGroups } from "@/lib/firebase/data";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 import type { AudienceGroup } from "@/lib/types";
 import { groupsForEmail } from "@/lib/audience";
-import { formatTimeDisplay } from "@/lib/utils";
+import { accountDisplayName, formatTimeDisplay } from "@/lib/utils";
+import { MyEvents } from "./MyEvents";
 
 export default function SubmitPage() {
   const { user, loading, configured } = useAuth();
@@ -19,6 +21,10 @@ export default function SubmitPage() {
   const [saving, setSaving] = useState(false);
   const [groups, setGroups] = useState<AudienceGroup[]>([]);
   const [tags, setTags] = useState<string[]>([]);
+  const [hostedByOther, setHostedByOther] = useState(false);
+  const [otherHost, setOtherHost] = useState("");
+
+  const myName = accountDisplayName(user);
 
   // Only groups the signed-in user belongs to (by email) — you can't invite
   // audiences you aren't part of.
@@ -56,6 +62,14 @@ export default function SubmitPage() {
     const time = timeRaw ? formatTimeDisplay(timeRaw) : timeRaw;
     // Enforce membership even if the UI is bypassed.
     const safeTags = tags.filter((t) => allowedSlugs.has(t));
+    // Yours unless you said someone else is running it.
+    const host = (hostedByOther ? otherHost : myName).trim();
+    if (!host) {
+      const msg = "Add a host name before sending this one in.";
+      setStatus(msg);
+      toast.error(msg);
+      return;
+    }
 
     setSaving(true);
     setStatus("Sending…");
@@ -63,7 +77,7 @@ export default function SubmitPage() {
     try {
       await submitEvent({
         title: String(fd.get("title") || "").trim(),
-        host: String(fd.get("host") || "").trim(),
+        host,
         date: String(fd.get("date") || "").trim(),
         time,
         location: String(fd.get("location") || "").trim(),
@@ -73,6 +87,8 @@ export default function SubmitPage() {
       });
       form.reset();
       setTags([]);
+      setHostedByOther(false);
+      setOtherHost("");
       const msg =
         "Event submitted! It'll show on the board once it's approved.";
       setStatus(msg);
@@ -106,7 +122,7 @@ export default function SubmitPage() {
       <PageHeader
         kicker="Got an idea?"
         title="Submit an Event"
-        lede="Fill this out and it'll go to the organizer for review. You can invite only audience groups you're a member of."
+        lede="Fill this out and it'll go to the organizer for review. You're the host unless you say otherwise, and you can invite only audience groups you're a member of."
       />
 
       {loading ? (
@@ -122,106 +138,111 @@ export default function SubmitPage() {
           </Link>
         </div>
       ) : (
-        <form className="form-card" onSubmit={(e) => void onSubmit(e)}>
-          <div className="form-row">
-            <label className="field-label" htmlFor="title">
-              Event title
-            </label>
-            <input
-              className="field"
-              id="title"
-              name="title"
-              required
-              placeholder="e.g. Kayak Night at Sanford Lake"
-            />
-          </div>
-          <div className="form-row">
-            <label className="field-label" htmlFor="host">
-              Host name
-            </label>
-            <input
-              className="field"
-              id="host"
-              name="host"
-              required
-              defaultValue={user.displayName || ""}
-              placeholder="Who's running this one?"
-            />
-          </div>
-          <div className="form-row two-col">
-            <div>
-              <label className="field-label" htmlFor="date">
-                Date
+        <>
+          <form className="form-card" onSubmit={(e) => void onSubmit(e)}>
+            <div className="form-row">
+              <label className="field-label" htmlFor="title">
+                Event title
               </label>
               <input
                 className="field"
-                id="date"
-                name="date"
-                type="date"
+                id="title"
+                name="title"
                 required
+                placeholder="e.g. Kayak Night at Sanford Lake"
               />
             </div>
-            <div>
-              <label className="field-label" htmlFor="time">
-                Time
+            <AttributionField
+              idPrefix="submit-host"
+              label="Host"
+              myName={myName}
+              selfHint="— your account name"
+              toggleLabel="Someone else is hosting"
+              otherLabel="Host's name"
+              otherPlaceholder="Who's running this one?"
+              byOther={hostedByOther}
+              onByOtherChange={setHostedByOther}
+              otherName={otherHost}
+              onOtherNameChange={setOtherHost}
+              disabled={saving}
+            />
+            <div className="form-row two-col">
+              <div>
+                <label className="field-label" htmlFor="date">
+                  Date
+                </label>
+                <input
+                  className="field"
+                  id="date"
+                  name="date"
+                  type="date"
+                  required
+                />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="time">
+                  Time
+                </label>
+                <input
+                  className="field"
+                  id="time"
+                  name="time"
+                  type="time"
+                  required
+                />
+              </div>
+            </div>
+            <div className="form-row">
+              <label className="field-label" htmlFor="location">
+                Location
               </label>
               <input
                 className="field"
-                id="time"
-                name="time"
-                type="time"
+                id="location"
+                name="location"
                 required
+                placeholder="Where's it happening?"
               />
             </div>
-          </div>
-          <div className="form-row">
-            <label className="field-label" htmlFor="location">
-              Location
-            </label>
-            <input
-              className="field"
-              id="location"
-              name="location"
-              required
-              placeholder="Where's it happening?"
-            />
-          </div>
-          <div className="form-row">
-            <label className="field-label" htmlFor="description">
-              Description{" "}
-              <span className="field-hint">— what should people expect?</span>
-            </label>
-            <textarea
-              className="field min-h-[120px]"
-              id="description"
-              name="description"
-              required
-              placeholder="What's the plan, what to bring, anything people should know."
-            />
-          </div>
-          <div className="form-row">
-            <div className="field-label">Invite audience groups</div>
-            {myGroups.length === 0 ? (
-              <p className="text-sm text-muted">
-                You&apos;re not in any audience groups yet, so this event will be
-                visible to <strong>everyone</strong> once approved. Ask an admin
-                to add your account email to a group if you want to invite a
-                private audience.
-              </p>
-            ) : (
-              <TagPicker
-                groups={myGroups}
-                selected={tags}
-                onChange={setTags}
-                idPrefix="submit-tag"
+            <div className="form-row">
+              <label className="field-label" htmlFor="description">
+                Description{" "}
+                <span className="field-hint">— what should people expect?</span>
+              </label>
+              <textarea
+                className="field min-h-[120px]"
+                id="description"
+                name="description"
+                required
+                placeholder="What's the plan, what to bring, anything people should know."
               />
-            )}
-          </div>
-          <button type="submit" className="btn-primary" disabled={saving}>
-            Send Submission
-          </button>
-          {status && <p className="mt-3 text-sm text-muted">{status}</p>}
-        </form>
+            </div>
+            <div className="form-row">
+              <div className="field-label">Invite audience groups</div>
+              {myGroups.length === 0 ? (
+                <p className="text-sm text-muted">
+                  You&apos;re not in any audience groups yet, so this event will
+                  be visible to <strong>everyone</strong> once approved. Ask an
+                  admin to add your account email to a group if you want to
+                  invite a private audience.
+                </p>
+              ) : (
+                <TagPicker
+                  groups={myGroups}
+                  selected={tags}
+                  onChange={setTags}
+                  idPrefix="submit-tag"
+                />
+              )}
+            </div>
+            <button type="submit" className="btn-primary" disabled={saving}>
+              Send Submission
+            </button>
+            {status && <p className="mt-3 text-sm text-muted">{status}</p>}
+          </form>
+
+          <MyEvents groups={groups} />
+        </>
       )}
     </>
   );

@@ -23,7 +23,7 @@ import {
   membersContentKey,
   readSquadListCache,
 } from "@/lib/photoCache";
-import { resizeImageToBase64 } from "@/lib/utils";
+import { accountDisplayName, resizeImageToBase64 } from "@/lib/utils";
 
 /**
  * Client-only squad UI (loaded with next/dynamic ssr:false from page.tsx).
@@ -342,7 +342,7 @@ export default function SquadClient() {
               id="sq-name"
               name="name"
               required
-              defaultValue={myProfile?.name || user.displayName || ""}
+              defaultValue={myProfile?.name || accountDisplayName(user)}
               placeholder="What should people call you?"
             />
           </div>

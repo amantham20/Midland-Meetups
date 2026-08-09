@@ -158,6 +158,7 @@ export default function HappeningsPage() {
       <EventModal
         event={selected}
         rsvps={rsvps}
+        groups={groups}
         onClose={() => setSelectedId(null)}
       />
     </>

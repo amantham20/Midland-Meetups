@@ -19,6 +19,8 @@ Progressive Web App rewrite of the Midland Meetups bulletin board.
 | The Lore Letter | Firestore `memories` + submission form |
 | The Squad | Firestore `squad` + inline compressed base64 photos (no Storage) |
 | Submit an Event | Auth-gated form (replaces plaintext `SUBMIT_PASSWORD`) |
+| Host / author names | Taken from the signed-in account, with a “someone else is hosting” escape hatch |
+| Edit your own events | Hosts edit their submissions (pending or live) from `/submit` or the event dialog |
 | Sign-in | Firebase Auth — Email/Password |
 | Admin queue | `/admin` — approve/reject + event status (bootstrap UID and/or admin claim) |
 | PWA install | Web App Manifest + service worker via next-pwa |
@@ -151,8 +153,13 @@ FCM still needs a VAPID key and users who enabled reminders in the app.
 | status | string | `confirmed` \| `rain-delay` \| `canceled` \| `relocated` |
 | statusNote | string | shown with status flags |
 | approved | boolean | public only when `true` |
-| createdBy | string | Auth UID |
-| reminderSent | boolean | set by cron after FCM send |
+| createdBy | string | Auth UID — also who may edit the event |
+| reminderSent | boolean | set by cron after FCM send; cleared when a host moves the date/time |
+| updatedAt | timestamp | stamped on every edit |
+
+`createdBy` may edit `title`, `host`, `date`, `time`, `location`, `description`,
+`status`, `statusNote` and `tags` on their own event — rules pin every other
+field, so a host can't self-approve or reassign one. Admins still edit anything.
 
 ### `memories/{id}`
 
@@ -251,11 +258,11 @@ xcodebuild -project ios/MidlandMeetups.xcodeproj -scheme MidlandMeetups -destina
 
 | Web page | iOS |
 |----------|-----|
-| `/` Happenings | Happenings tab — next 7 days, status ticker, event detail with RSVP |
+| `/` Happenings | Happenings tab — next 7 days, status ticker, event detail with RSVP and (for the host) Edit |
 | `/rsvps` | RSVPs tab — upcoming / past, going and can't-make-it lists |
 | `/lore` | Lore tab — archive + submit a memory |
 | `/squad` | Squad tab — member grid, join/edit your profile with a photo picker |
-| `/submit` | More → Submit an Event, and the **+** on Happenings |
+| `/submit` | More → Submit an Event, your own submissions with Edit, and the **+** on Happenings |
 | `/login` | More → Sign in (Identity Toolkit REST; session in the keychain) |
 | `/admin` | More → Admin queue — approvals, event status, audience groups |
 | Game link | More → Game (opens in the browser) |

@@ -135,6 +135,33 @@ export function subscribeApprovedEvents(
   );
 }
 
+/**
+ * Everything this user submitted, approved or not, newest date first.
+ * Single `where` (no `orderBy`) so it needs no composite index — and it matches
+ * the `createdBy == uid` read rule, which a broader query would fail.
+ */
+export function subscribeMyEvents(
+  userId: string,
+  onData: (events: MeetupEvent[]) => void,
+  onError?: (err: Error) => void,
+): Unsubscribe {
+  const q = query(
+    collection(getClientDb(), "events"),
+    where("createdBy", "==", userId),
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      onData(
+        snap.docs
+          .map((d) => mapEvent(d.id, d.data()))
+          .sort((a, b) => b.date.localeCompare(a.date)),
+      );
+    },
+    (err) => onError?.(err),
+  );
+}
+
 export function subscribeRsvps(
   onData: (rsvps: Rsvp[]) => void,
   onError?: (err: Error) => void,
@@ -342,6 +369,47 @@ export async function updateEventTags(
   await updateDoc(doc(getClientDb(), "events", eventId), {
     tags: tags.map((t) => String(t).trim()).filter(Boolean),
   });
+}
+
+export type EventDetailFields = {
+  title: string;
+  host: string;
+  date: string;
+  time: string;
+  location: string;
+  description: string;
+  status: EventStatus;
+  statusNote: string;
+  tags: string[];
+};
+
+/**
+ * Full edit of an event. Allowed for the host who submitted it and for admins
+ * (rules check `createdBy`); `approved`, `createdBy` and `createdAt` are never
+ * written, so a host can't self-approve or hand the event to someone else.
+ *
+ * Pass `resetReminder` when the date or time moved so the day-before push goes
+ * out again for the new slot.
+ */
+export async function updateEventDetails(
+  eventId: string,
+  fields: EventDetailFields,
+  opts: { resetReminder?: boolean } = {},
+): Promise<void> {
+  const payload: Record<string, unknown> = {
+    title: fields.title.trim(),
+    host: fields.host.trim(),
+    date: fields.date.trim(),
+    time: fields.time.trim(),
+    location: fields.location.trim(),
+    description: fields.description.trim(),
+    status: fields.status,
+    statusNote: fields.statusNote.trim(),
+    tags: fields.tags.map((t) => String(t).trim()).filter(Boolean),
+    updatedAt: serverTimestamp(),
+  };
+  if (opts.resetReminder) payload.reminderSent = false;
+  await updateDoc(doc(getClientDb(), "events", eventId), payload);
 }
 
 export type SquadProfileFields = {

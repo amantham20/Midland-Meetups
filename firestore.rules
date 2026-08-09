@@ -22,6 +22,21 @@ service cloud.firestore {
     }
 
     match /events/{eventId} {
+      // The account that submitted the event.
+      function isEventOwner() {
+        return signedIn() && resource.data.createdBy == request.auth.uid;
+      }
+
+      // Fields the submitter may change on their own event. `approved`,
+      // `createdBy` and `createdAt` are deliberately absent: a host can't
+      // self-approve an event or hand it to another account.
+      function ownerEditableKeysOnly() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'host', 'date', 'time', 'location', 'description',
+          'status', 'statusNote', 'tags', 'reminderSent', 'updatedAt'
+        ]);
+      }
+
       allow read: if resource.data.approved == true || isAdmin()
         || (signedIn() && resource.data.createdBy == request.auth.uid);
       allow create: if signedIn()
@@ -31,7 +46,9 @@ service cloud.firestore {
           'title', 'host', 'date', 'time', 'location', 'description',
           'status', 'statusNote', 'approved', 'createdBy'
         ]);
-      allow update, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (isEventOwner() && ownerEditableKeysOnly());
+      allow delete: if isAdmin();
     }
 
     match /memories/{memoryId} {
