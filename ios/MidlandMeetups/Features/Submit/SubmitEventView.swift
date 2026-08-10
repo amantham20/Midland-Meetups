@@ -13,6 +13,7 @@ struct SubmitEventView: View {
     @State private var title = ""
     @State private var hostedByOther = false
     @State private var otherHost = ""
+    @State private var otherHostUserId = ""
     @State private var date = Date()
     @State private var time = Date()
     @State private var location = ""
@@ -66,6 +67,8 @@ struct SubmitEventView: View {
         .task(id: session.uid) {
             guard let uid = session.uid else { return }
             await data.loadMyEvents(userId: uid)
+            // The host picker is built from squad profiles.
+            if data.squad.isEmpty { await data.loadSquad() }
         }
         .onChange(of: myGroups) { _, groups in
             // Drop any selection the user is no longer allowed to use.
@@ -77,7 +80,8 @@ struct SubmitEventView: View {
                 EventEditSheet(
                     event: event,
                     groups: data.groups,
-                    myName: session.preferredName
+                    myName: session.preferredName,
+                    myUserId: session.uid ?? ""
                 ) {
                     guard let uid = session.uid else { return }
                     await data.loadMyEvents(userId: uid)
@@ -102,7 +106,10 @@ struct SubmitEventView: View {
                 otherLabel: "Host's name",
                 otherPlaceholder: "Who's running this one?",
                 byOther: $hostedByOther,
-                otherName: $otherHost
+                otherName: $otherHost,
+                people: data.hostCandidates,
+                otherUserId: $otherHostUserId,
+                taggedHint: "They'll be able to edit this event too."
             )
 
             LabeledField(label: "Date") {
@@ -181,6 +188,7 @@ struct SubmitEventView: View {
             try await data.submitEvent(
                 title: title.trimmingCharacters(in: .whitespaces),
                 host: resolvedHost,
+                hostUserId: hostedByOther ? otherHostUserId : uid,
                 date: EventDates.iso(from: date),
                 time: formattedTime,
                 location: location.trimmingCharacters(in: .whitespaces),
@@ -194,6 +202,7 @@ struct SubmitEventView: View {
             tags = []
             hostedByOther = false
             otherHost = ""
+            otherHostUserId = ""
             await data.loadMyEvents(userId: uid)
             let message = "Event submitted! It'll show on the board once it's approved."
             statusMessage = message
@@ -241,12 +250,12 @@ private struct MyEventsSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("YOUR SUBMISSIONS")
+                Text("YOURS TO RUN")
                     .font(.system(size: 12, weight: .semibold))
                     .tracking(1.2)
                     .foregroundStyle(Theme.muted)
-                SectionHeading(text: "Events you posted")
-                Text("Change the details, move the date or flag a rain delay — edits to an approved event show on the board right away.")
+                SectionHeading(text: "Events you host")
+                Text("Everything you submitted, plus anything someone tagged you as host on. Change the details, move the date or flag a rain delay — edits to an approved event show on the board right away.")
                     .font(.system(size: 15))
                     .foregroundStyle(Theme.muted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -257,7 +266,7 @@ private struct MyEventsSection: View {
             } else if let error = data.myEventsError {
                 EmptyNote(error)
             } else if data.myEvents.isEmpty {
-                EmptyNote("You haven't posted anything yet. Send one in with the form above.")
+                EmptyNote("Nothing yet — send one in with the form above, or ask a host to tag you on theirs.")
             } else {
                 ForEach(upcoming) { event in
                     row(for: event)
@@ -285,6 +294,16 @@ private struct MyEventsSection: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
                 StatusPill(status: event.status)
+            }
+
+            if let uid = session.uid, event.createdBy != uid {
+                Text("Tagged as host")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.blue)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Theme.blue.opacity(0.12))
+                    .clipShape(Capsule())
             }
 
             if !event.approved {

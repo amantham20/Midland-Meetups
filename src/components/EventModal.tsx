@@ -46,9 +46,13 @@ function EventModalBody({
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
 
-  // The host who submitted it can fix their own event; admins can fix any.
+  // Whoever submitted it and whoever is tagged as host can fix their own
+  // event; admins can fix any.
   const canEdit = Boolean(
-    user && (isAdmin || (event.createdBy && event.createdBy === user.uid)),
+    user &&
+      (isAdmin ||
+        (event.createdBy && event.createdBy === user.uid) ||
+        (event.hostUserId && event.hostUserId === user.uid)),
   );
 
   useEffect(() => {

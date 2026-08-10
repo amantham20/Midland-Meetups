@@ -25,14 +25,11 @@ import {
   rejectDocument,
   requestAdminClaim,
   saveGroup,
-  updateEventStatus,
-  updateEventTags,
   adminUpdateSquadMember,
 } from "@/lib/firebase/data";
 import { normalizeEmail } from "@/lib/audience";
 import type {
   AudienceGroup,
-  EventStatus,
   MeetupEvent,
   Memory,
   SquadMember,
@@ -132,10 +129,12 @@ export default function AdminPage() {
   );
   const pendingSquad = useMemo(() => squad.filter((s) => !s.approved), [squad]);
   const approvedEvents = useMemo(
-    () =>
-      events
-        .filter((e) => e.approved)
-        .sort((a, b) => a.date.localeCompare(b.date)),
+    () => events.filter((e) => e.approved),
+    [events],
+  );
+  /** Every event, pending included — the Events tab edits all of them. */
+  const eventsByDate = useMemo(
+    () => [...events].sort((a, b) => a.date.localeCompare(b.date)),
     [events],
   );
   const pendingTotal =
@@ -284,27 +283,6 @@ export default function AdminPage() {
     } catch (err) {
       console.error(err);
       toast.error("Couldn't delete group.");
-    }
-  }
-
-  async function saveEvent(
-    eventId: string,
-    draft: { status: EventStatus; note: string; tags: string[] },
-  ) {
-    setBusyId(eventId);
-    try {
-      await updateEventStatus(eventId, draft.status, draft.note);
-      await updateEventTags(eventId, draft.tags);
-      await load();
-      toast.success("Event updated.");
-    } catch (err) {
-      console.error(err);
-      const msg = "Status update failed. Check admin access and rules.";
-      setError(msg);
-      toast.error(msg);
-      throw err;
-    } finally {
-      setBusyId(null);
     }
   }
 
@@ -501,7 +479,7 @@ export default function AdminPage() {
                   ? squad.length
                   : t.id === "groups"
                     ? groups.length
-                    : approvedEvents.length;
+                    : events.length;
             return (
               <button
                 key={t.id}
@@ -579,10 +557,9 @@ export default function AdminPage() {
           )}
           {tab === "events" && (
             <EventsPanel
-              events={approvedEvents}
+              events={eventsByDate}
               groups={groups}
-              busyId={busyId}
-              onSave={saveEvent}
+              onSaved={() => void load()}
             />
           )}
         </>

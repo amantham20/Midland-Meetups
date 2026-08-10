@@ -27,18 +27,28 @@ service cloud.firestore {
         return signedIn() && resource.data.createdBy == request.auth.uid;
       }
 
-      // Fields the submitter may change on their own event. `approved`,
-      // `createdBy` and `createdAt` are deliberately absent: a host can't
-      // self-approve an event or hand it to another account.
-      function ownerEditableKeysOnly() {
+      // The account tagged as host, if the submitter picked a member instead
+      // of typing a name. `get` with a default so older docs without the field
+      // don't error the whole rule.
+      function isTaggedHost() {
+        return signedIn()
+          && resource.data.get('hostUserId', '') == request.auth.uid;
+      }
+
+      // Fields a host may change on their own event. `approved`, `createdBy`
+      // and `createdAt` are deliberately absent: a host can't self-approve an
+      // event or take one over from the account that submitted it.
+      function hostEditableKeysOnly() {
         return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'title', 'host', 'date', 'time', 'location', 'description',
-          'status', 'statusNote', 'tags', 'reminderSent', 'updatedAt'
+          'title', 'host', 'hostUserId', 'date', 'time', 'location',
+          'description', 'status', 'statusNote', 'tags', 'reminderSent',
+          'updatedAt'
         ]);
       }
 
       allow read: if resource.data.approved == true || isAdmin()
-        || (signedIn() && resource.data.createdBy == request.auth.uid);
+        || (signedIn() && resource.data.createdBy == request.auth.uid)
+        || isTaggedHost();
       allow create: if signedIn()
         && request.resource.data.approved == false
         && request.resource.data.createdBy == request.auth.uid
@@ -47,7 +57,7 @@ service cloud.firestore {
           'status', 'statusNote', 'approved', 'createdBy'
         ]);
       allow update: if isAdmin()
-        || (isEventOwner() && ownerEditableKeysOnly());
+        || ((isEventOwner() || isTaggedHost()) && hostEditableKeysOnly());
       allow delete: if isAdmin();
     }
 

@@ -19,6 +19,7 @@ struct EventEditSheet: View {
     @State private var title: String
     @State private var hostedByOther: Bool
     @State private var otherHost: String
+    @State private var otherHostUserId: String
     @State private var date: Date
     @State private var time: Date
     @State private var location: String
@@ -32,16 +33,22 @@ struct EventEditSheet: View {
         event: MeetupEvent,
         groups: [AudienceGroup],
         myName: String,
+        myUserId: String,
         onSaved: @escaping () async -> Void
     ) {
         self.event = event
         self.groups = groups
         self.onSaved = onSaved
 
-        let isMine = event.host.caseInsensitiveCompare(myName) == .orderedSame
+        // "It's me" only when both the name and the tagged account line up — an
+        // event tagged to someone else who shares your name is still theirs.
+        let isMine = myUserId.isEmpty || event.hostUserId.isEmpty
+            ? event.host.caseInsensitiveCompare(myName) == .orderedSame
+            : event.hostUserId == myUserId
         _title = State(initialValue: event.title)
         _hostedByOther = State(initialValue: !isMine)
         _otherHost = State(initialValue: isMine ? "" : event.host)
+        _otherHostUserId = State(initialValue: isMine ? "" : event.hostUserId)
         _date = State(initialValue: EventDates.date(fromISO: event.date) ?? Date())
         _time = State(initialValue: EventEditSheet.timeDate(for: event))
         _location = State(initialValue: event.location)
@@ -123,7 +130,10 @@ struct EventEditSheet: View {
                     otherLabel: "Host's name",
                     otherPlaceholder: "Who's running this one?",
                     byOther: $hostedByOther,
-                    otherName: $otherHost
+                    otherName: $otherHost,
+                    people: data.hostCandidates,
+                    otherUserId: $otherHostUserId,
+                    taggedHint: "They'll be able to edit this event too."
                 )
 
                 LabeledField(label: "Date") {
@@ -198,6 +208,10 @@ struct EventEditSheet: View {
         }
         .navigationTitle("Edit event")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            // The host picker is built from squad profiles.
+            if data.squad.isEmpty { await data.loadSquad() }
+        }
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }
@@ -222,6 +236,7 @@ struct EventEditSheet: View {
                 eventId: event.id,
                 title: title,
                 host: resolvedHost,
+                hostUserId: hostedByOther ? otherHostUserId : (session.uid ?? ""),
                 date: isoDate,
                 time: displayTime,
                 location: location,

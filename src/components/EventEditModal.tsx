@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { updateEventDetails } from "@/lib/firebase/data";
 import { groupNameMap, groupsForEmail } from "@/lib/audience";
+import { useHostCandidates } from "@/lib/useHostCandidates";
 import type { AudienceGroup, EventStatus, MeetupEvent } from "@/lib/types";
 import { STATUS_LABEL } from "@/lib/types";
 import {
@@ -49,14 +50,18 @@ export function EventEditModal({
   const formId = `edit-event-${event.id}`;
 
   const myName = accountDisplayName(user);
+  const people = useHostCandidates();
+  // "It's me" only when both the name and the tagged account line up — an event
+  // tagged to someone else who happens to share your name is still theirs.
+  const hostIsMe =
+    event.hostUserId
+      ? event.hostUserId === user?.uid
+      : event.host.trim().toLowerCase() === myName.trim().toLowerCase();
   const [title, setTitle] = useState(event.title);
-  const [byOther, setByOther] = useState(
-    () => event.host.trim().toLowerCase() !== myName.trim().toLowerCase(),
-  );
-  const [otherHost, setOtherHost] = useState(() =>
-    event.host.trim().toLowerCase() === myName.trim().toLowerCase()
-      ? ""
-      : event.host,
+  const [byOther, setByOther] = useState(() => !hostIsMe);
+  const [otherHost, setOtherHost] = useState(() => (hostIsMe ? "" : event.host));
+  const [otherHostUserId, setOtherHostUserId] = useState(() =>
+    hostIsMe ? "" : event.hostUserId || "",
   );
   const [date, setDate] = useState(event.date);
   const [time, setTime] = useState(() => toTimeInputValue(event.time));
@@ -81,6 +86,7 @@ export function EventEditModal({
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const host = (byOther ? otherHost : myName).trim();
+    const hostUserId = byOther ? otherHostUserId : user?.uid || "";
     if (!host) {
       toast.error("Add a host name.");
       return;
@@ -96,6 +102,7 @@ export function EventEditModal({
         {
           title: title.trim(),
           host,
+          hostUserId,
           date,
           time: displayTime,
           location: location.trim(),
@@ -174,6 +181,10 @@ export function EventEditModal({
           onByOtherChange={setByOther}
           otherName={otherHost}
           onOtherNameChange={setOtherHost}
+          people={people}
+          otherUserId={otherHostUserId}
+          onOtherUserIdChange={setOtherHostUserId}
+          taggedHint="They'll be able to edit this event too."
           disabled={saving}
         />
 

@@ -16,12 +16,17 @@ import { formatDateShort, formatTimeDisplay, todayIso } from "@/lib/utils";
 function EventRow({
   event,
   labels,
+  myUserId,
   onEdit,
 }: {
   event: MeetupEvent;
   labels: Record<string, string>;
+  myUserId?: string;
   onEdit: (event: MeetupEvent) => void;
 }) {
+  // Someone else submitted it and tagged you as the host.
+  const taggedIn = Boolean(myUserId && event.createdBy !== myUserId);
+
   return (
     <article className="card card-hover flex flex-wrap items-start gap-4 p-4">
       <div className="min-w-0 flex-1">
@@ -32,6 +37,9 @@ function EventRow({
           <StatusPill status={event.status} />
           {!event.approved && (
             <span className="badge badge-amber">Awaiting approval</span>
+          )}
+          {taggedIn && (
+            <span className="badge badge-blue">Tagged as host</span>
           )}
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
@@ -66,8 +74,9 @@ function EventRow({
 }
 
 /**
- * The signed-in user's own submissions — including the ones still waiting for
- * approval, which never show up anywhere else — each editable in place.
+ * Events the signed-in user is responsible for: their own submissions —
+ * including the ones still waiting for approval, which show up nowhere else —
+ * plus any event that tagged them as host. All editable in place.
  */
 export function MyEvents({ groups }: { groups: AudienceGroup[] }) {
   const { user } = useAuth();
@@ -120,12 +129,13 @@ export function MyEvents({ groups }: { groups: AudienceGroup[] }) {
     <section className="mt-14" aria-label="Your events">
       <div className="mb-6">
         <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-          Your submissions
+          Yours to run
         </div>
         <h2 className="font-display text-[clamp(1.7rem,3.5vw,2.2rem)] font-bold tracking-tight">
-          Events you posted
+          Events you host
         </h2>
         <p className="mt-2 max-w-2xl text-muted">
+          Everything you submitted, plus anything someone tagged you as host on.
           Change the details, move the date or flag a rain delay — edits to an
           approved event show on the board right away.
         </p>
@@ -135,7 +145,8 @@ export function MyEvents({ groups }: { groups: AudienceGroup[] }) {
       {error && <EmptyNote>{error}</EmptyNote>}
       {!loading && !error && events.length === 0 && (
         <EmptyNote>
-          You haven&apos;t posted anything yet. Send one in with the form above.
+          Nothing yet — send one in with the form above, or ask a host to tag
+          you on theirs.
         </EmptyNote>
       )}
 
@@ -146,6 +157,7 @@ export function MyEvents({ groups }: { groups: AudienceGroup[] }) {
               key={e.id}
               event={e}
               labels={labels}
+              myUserId={user?.uid}
               onEdit={(evt) => setEditingId(evt.id)}
             />
           ))}
@@ -163,6 +175,7 @@ export function MyEvents({ groups }: { groups: AudienceGroup[] }) {
                 key={e.id}
                 event={e}
                 labels={labels}
+                myUserId={user?.uid}
                 onEdit={(evt) => setEditingId(evt.id)}
               />
             ))}

@@ -4,6 +4,9 @@ import SwiftUI
 ///
 /// "It's you, unless you say otherwise": the signed-in account's name is used
 /// by default and the name box only appears once the toggle is on.
+///
+/// Pass `people` to let the user tag a real member instead of typing a name —
+/// the tagged account comes back through the `otherUserId` binding.
 struct AttributionField: View {
     let label: String
     let myName: String
@@ -13,6 +16,14 @@ struct AttributionField: View {
     var otherPlaceholder: String = ""
     @Binding var byOther: Bool
     @Binding var otherName: String
+    /// Members who can be tagged. Empty for a plain free-text field.
+    var people: [HostCandidate] = []
+    /// Auth uid of the tagged member; "" when the name was typed in.
+    var otherUserId: Binding<String> = .constant("")
+    /// Small print shown once a member is tagged.
+    var taggedHint: String?
+
+    private var canTag: Bool { !people.isEmpty }
 
     var body: some View {
         LabeledField(label: label) {
@@ -24,7 +35,37 @@ struct AttributionField: View {
                     .foregroundStyle(Theme.ink)
                     .tint(Theme.blue)
 
-                if byOther {
+                if byOther, canTag {
+                    LabeledField(
+                        label: "Tag a member",
+                        hint: "or pick “someone else” to type a name"
+                    ) {
+                        Picker("Tag a member", selection: taggedSelection) {
+                            Text("Someone else (type a name)").tag("")
+                            // A tagged account that has since left the squad
+                            // still needs an option to sit on.
+                            if !otherUserId.wrappedValue.isEmpty,
+                               !people.contains(where: { $0.userId == otherUserId.wrappedValue }) {
+                                Text(otherName.isEmpty ? "Tagged member" : otherName)
+                                    .tag(otherUserId.wrappedValue)
+                            }
+                            ForEach(people) { person in
+                                Text(person.name).tag(person.userId)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .tint(Theme.ink)
+                    }
+
+                    if !otherUserId.wrappedValue.isEmpty, let taggedHint {
+                        Text(taggedHint)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                if byOther, otherUserId.wrappedValue.isEmpty {
                     LabeledField(label: otherLabel) {
                         TextField(otherPlaceholder, text: $otherName)
                             .textContentType(.name)
@@ -33,6 +74,19 @@ struct AttributionField: View {
                 }
             }
         }
+    }
+
+    /// Picking a member fills in the display name the event actually stores.
+    private var taggedSelection: Binding<String> {
+        Binding(
+            get: { otherUserId.wrappedValue },
+            set: { userId in
+                otherUserId.wrappedValue = userId
+                if let person = people.first(where: { $0.userId == userId }) {
+                    otherName = person.name
+                }
+            }
+        )
     }
 
     private var accountCard: some View {

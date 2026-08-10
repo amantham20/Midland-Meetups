@@ -1,11 +1,16 @@
 "use client";
 
+import type { HostCandidate } from "@/lib/types";
+
 /**
  * "It's you, unless you say otherwise" name control.
  *
  * Replaces the free-text host / author inputs on the submission forms: the
  * signed-in account's name is used by default and a name box only appears when
  * the user ticks the "someone else" box.
+ *
+ * Pass `people` to let them tag a real member instead of typing a name — the
+ * tagged account is reported through `onOtherUserIdChange` alongside the name.
  */
 export function AttributionField({
   idPrefix,
@@ -19,6 +24,10 @@ export function AttributionField({
   onByOtherChange,
   otherName,
   onOtherNameChange,
+  people,
+  otherUserId = "",
+  onOtherUserIdChange,
+  taggedHint,
   disabled,
 }: {
   idPrefix: string;
@@ -37,10 +46,30 @@ export function AttributionField({
   onByOtherChange: (next: boolean) => void;
   otherName: string;
   onOtherNameChange: (next: string) => void;
+  /** Members who can be tagged. Omit for a plain free-text field. */
+  people?: HostCandidate[];
+  /** Auth uid of the tagged member; "" when the name was typed in. */
+  otherUserId?: string;
+  onOtherUserIdChange?: (next: string) => void;
+  /** Small print shown once a member is tagged. */
+  taggedHint?: string;
   disabled?: boolean;
 }) {
   const toggleId = `${idPrefix}-by-other`;
   const nameId = `${idPrefix}-other-name`;
+  const pickId = `${idPrefix}-tagged`;
+
+  const canTag = Boolean(people?.length && onOtherUserIdChange);
+  // A tagged account that has since left the squad still needs an option to
+  // sit on, or the select would silently fall back to "not a member".
+  const missingTagged =
+    otherUserId && !people?.some((p) => p.userId === otherUserId);
+
+  function pick(userId: string) {
+    onOtherUserIdChange?.(userId);
+    const person = people?.find((p) => p.userId === userId);
+    if (person) onOtherNameChange(person.name);
+  }
 
   return (
     <div className="form-row">
@@ -75,7 +104,36 @@ export function AttributionField({
         {toggleLabel}
       </label>
 
-      {byOther && (
+      {byOther && canTag && (
+        <div className="mt-2.5">
+          <label className="field-label" htmlFor={pickId}>
+            Tag a member{" "}
+            <span className="field-hint">— or pick “someone else” to type a name</span>
+          </label>
+          <select
+            id={pickId}
+            className="field"
+            value={otherUserId}
+            disabled={disabled}
+            onChange={(e) => pick(e.target.value)}
+          >
+            <option value="">Someone else (type a name)</option>
+            {missingTagged && (
+              <option value={otherUserId}>{otherName || "Tagged member"}</option>
+            )}
+            {people?.map((p) => (
+              <option key={p.userId} value={p.userId}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          {otherUserId && taggedHint && (
+            <p className="mt-1.5 text-xs text-muted">{taggedHint}</p>
+          )}
+        </div>
+      )}
+
+      {byOther && !otherUserId && (
         <div className="mt-2.5">
           <label className="field-label" htmlFor={nameId}>
             {otherLabel}

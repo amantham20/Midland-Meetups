@@ -20,9 +20,10 @@ Progressive Web App rewrite of the Midland Meetups bulletin board.
 | The Squad | Firestore `squad` + inline compressed base64 photos (no Storage) |
 | Submit an Event | Auth-gated form (replaces plaintext `SUBMIT_PASSWORD`) |
 | Host / author names | Taken from the signed-in account, with a “someone else is hosting” escape hatch |
-| Edit your own events | Hosts edit their submissions (pending or live) from `/submit` or the event dialog |
+| Tag a host | Pick a squad member instead of typing a name — they can then edit the event too |
+| Edit your own events | Submitter and tagged host edit from `/submit` or the event dialog; admins edit any event from `/admin` → Events |
 | Sign-in | Firebase Auth — Email/Password |
-| Admin queue | `/admin` — approve/reject + event status (bootstrap UID and/or admin claim) |
+| Admin queue | `/admin` — approve/reject + edit any event end to end (bootstrap UID and/or admin claim) |
 | PWA install | Web App Manifest + service worker via next-pwa |
 | Event reminders | FCM tokens + Next.js `/api/cron/reminders` (Vercel Cron or any external cron) |
 | Admin claim | Next.js `/api/admin/claim` (optional; bootstrap UIDs already in rules) |
@@ -148,6 +149,7 @@ FCM still needs a VAPID key and users who enabled reminders in the app.
 | Field | Type | Notes |
 |-------|------|--------|
 | title, host, location, description | string | |
+| hostUserId | string | Auth UID of the tagged host; `""` when the name was typed in |
 | date | string | `YYYY-MM-DD` |
 | time | string | display time |
 | status | string | `confirmed` \| `rain-delay` \| `canceled` \| `relocated` |
@@ -157,9 +159,11 @@ FCM still needs a VAPID key and users who enabled reminders in the app.
 | reminderSent | boolean | set by cron after FCM send; cleared when a host moves the date/time |
 | updatedAt | timestamp | stamped on every edit |
 
-`createdBy` may edit `title`, `host`, `date`, `time`, `location`, `description`,
-`status`, `statusNote` and `tags` on their own event — rules pin every other
-field, so a host can't self-approve or reassign one. Admins still edit anything.
+`createdBy` and `hostUserId` may edit `title`, `host`, `hostUserId`, `date`,
+`time`, `location`, `description`, `status`, `statusNote` and `tags` on their
+own event — rules pin every other field, so a host can't self-approve one or
+take it over from the account that submitted it. Admins edit anything, on any
+event, from **Admin → Events**.
 
 ### `memories/{id}`
 
@@ -264,7 +268,7 @@ xcodebuild -project ios/MidlandMeetups.xcodeproj -scheme MidlandMeetups -destina
 | `/squad` | Squad tab — member grid, join/edit your profile with a photo picker |
 | `/submit` | More → Submit an Event, your own submissions with Edit, and the **+** on Happenings |
 | `/login` | More → Sign in (Identity Toolkit REST; session in the keychain) |
-| `/admin` | More → Admin queue — approvals, event status, audience groups |
+| `/admin` | More → Admin queue — approvals, full edit on any event, audience groups |
 | Game link | More → Game (opens in the browser) |
 
 Native additions: **Add to Calendar** writes straight into the user's calendar via

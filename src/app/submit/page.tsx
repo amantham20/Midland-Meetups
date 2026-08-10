@@ -12,6 +12,7 @@ import { submitEvent, subscribeGroups } from "@/lib/firebase/data";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 import type { AudienceGroup } from "@/lib/types";
 import { groupsForEmail } from "@/lib/audience";
+import { useHostCandidates } from "@/lib/useHostCandidates";
 import { accountDisplayName, formatTimeDisplay } from "@/lib/utils";
 import { MyEvents } from "./MyEvents";
 
@@ -23,8 +24,10 @@ export default function SubmitPage() {
   const [tags, setTags] = useState<string[]>([]);
   const [hostedByOther, setHostedByOther] = useState(false);
   const [otherHost, setOtherHost] = useState("");
+  const [otherHostUserId, setOtherHostUserId] = useState("");
 
   const myName = accountDisplayName(user);
+  const people = useHostCandidates();
 
   // Only groups the signed-in user belongs to (by email) — you can't invite
   // audiences you aren't part of.
@@ -64,6 +67,7 @@ export default function SubmitPage() {
     const safeTags = tags.filter((t) => allowedSlugs.has(t));
     // Yours unless you said someone else is running it.
     const host = (hostedByOther ? otherHost : myName).trim();
+    const hostUserId = hostedByOther ? otherHostUserId : user.uid;
     if (!host) {
       const msg = "Add a host name before sending this one in.";
       setStatus(msg);
@@ -78,6 +82,7 @@ export default function SubmitPage() {
       await submitEvent({
         title: String(fd.get("title") || "").trim(),
         host,
+        hostUserId,
         date: String(fd.get("date") || "").trim(),
         time,
         location: String(fd.get("location") || "").trim(),
@@ -89,6 +94,7 @@ export default function SubmitPage() {
       setTags([]);
       setHostedByOther(false);
       setOtherHost("");
+      setOtherHostUserId("");
       const msg =
         "Event submitted! It'll show on the board once it's approved.";
       setStatus(msg);
@@ -164,6 +170,10 @@ export default function SubmitPage() {
               onByOtherChange={setHostedByOther}
               otherName={otherHost}
               onOtherNameChange={setOtherHost}
+              people={people}
+              otherUserId={otherHostUserId}
+              onOtherUserIdChange={setOtherHostUserId}
+              taggedHint="They'll be able to edit this event too."
               disabled={saving}
             />
             <div className="form-row two-col">

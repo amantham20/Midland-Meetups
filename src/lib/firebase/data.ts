@@ -38,6 +38,7 @@ function mapEvent(id: string, data: Record<string, unknown>): MeetupEvent {
     id,
     title: String(data.title ?? ""),
     host: String(data.host ?? ""),
+    hostUserId: data.hostUserId ? String(data.hostUserId) : undefined,
     date: String(data.date ?? ""),
     time: String(data.time ?? ""),
     location: String(data.location ?? ""),
@@ -136,30 +137,50 @@ export function subscribeApprovedEvents(
 }
 
 /**
- * Everything this user submitted, approved or not, newest date first.
- * Single `where` (no `orderBy`) so it needs no composite index — and it matches
- * the `createdBy == uid` read rule, which a broader query would fail.
+ * Every event this user is responsible for — the ones they submitted plus the
+ * ones they're tagged as host on — approved or not, newest date first.
+ *
+ * Two single-field queries rather than one `or()`: each matches a clause the
+ * read rule can satisfy on its own, and neither needs a composite index.
  */
 export function subscribeMyEvents(
   userId: string,
   onData: (events: MeetupEvent[]) => void,
   onError?: (err: Error) => void,
 ): Unsubscribe {
-  const q = query(
-    collection(getClientDb(), "events"),
-    where("createdBy", "==", userId),
-  );
-  return onSnapshot(
-    q,
+  const db = getClientDb();
+  let submitted: MeetupEvent[] = [];
+  let hosting: MeetupEvent[] = [];
+
+  function emit() {
+    const byId = new Map<string, MeetupEvent>();
+    for (const e of [...submitted, ...hosting]) byId.set(e.id, e);
+    onData(
+      Array.from(byId.values()).sort((a, b) => b.date.localeCompare(a.date)),
+    );
+  }
+
+  const unsubSubmitted = onSnapshot(
+    query(collection(db, "events"), where("createdBy", "==", userId)),
     (snap) => {
-      onData(
-        snap.docs
-          .map((d) => mapEvent(d.id, d.data()))
-          .sort((a, b) => b.date.localeCompare(a.date)),
-      );
+      submitted = snap.docs.map((d) => mapEvent(d.id, d.data()));
+      emit();
     },
     (err) => onError?.(err),
   );
+  const unsubHosting = onSnapshot(
+    query(collection(db, "events"), where("hostUserId", "==", userId)),
+    (snap) => {
+      hosting = snap.docs.map((d) => mapEvent(d.id, d.data()));
+      emit();
+    },
+    (err) => onError?.(err),
+  );
+
+  return () => {
+    unsubSubmitted();
+    unsubHosting();
+  };
 }
 
 export function subscribeRsvps(
@@ -222,6 +243,8 @@ export function subscribeApprovedSquad(
 export async function submitEvent(input: {
   title: string;
   host: string;
+  /** Auth uid when the host was tagged from the squad; "" for a typed name. */
+  hostUserId?: string;
   date: string;
   time: string;
   location: string;
@@ -232,6 +255,7 @@ export async function submitEvent(input: {
   await addDoc(collection(getClientDb(), "events"), {
     title: input.title,
     host: input.host,
+    hostUserId: input.hostUserId || "",
     date: input.date,
     time: input.time,
     location: input.location,
@@ -350,30 +374,10 @@ export async function rejectDocument(
   await deleteDoc(doc(getClientDb(), collectionName, id));
 }
 
-/** Organizer updates for the public status ticker. */
-export async function updateEventStatus(
-  eventId: string,
-  status: EventStatus,
-  statusNote: string,
-): Promise<void> {
-  await updateDoc(doc(getClientDb(), "events", eventId), {
-    status,
-    statusNote: statusNote.trim(),
-  });
-}
-
-export async function updateEventTags(
-  eventId: string,
-  tags: string[],
-): Promise<void> {
-  await updateDoc(doc(getClientDb(), "events", eventId), {
-    tags: tags.map((t) => String(t).trim()).filter(Boolean),
-  });
-}
-
 export type EventDetailFields = {
   title: string;
   host: string;
+  hostUserId?: string;
   date: string;
   time: string;
   location: string;
@@ -399,6 +403,7 @@ export async function updateEventDetails(
   const payload: Record<string, unknown> = {
     title: fields.title.trim(),
     host: fields.host.trim(),
+    hostUserId: fields.hostUserId || "",
     date: fields.date.trim(),
     time: fields.time.trim(),
     location: fields.location.trim(),

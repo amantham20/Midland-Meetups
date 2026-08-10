@@ -1,24 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Modal } from "@/components/Modal";
+import { EventEditModal } from "@/components/EventEditModal";
 import { StatusPill } from "@/components/StatusPill";
-import { TagChips, TagPicker } from "@/components/TagChips";
-import { Icons, PencilIcon, SearchIcon } from "@/components/Icons";
+import { TagChips } from "@/components/TagChips";
+import { Icons, PencilIcon, SearchIcon, UsersIcon } from "@/components/Icons";
 import { groupNameMap } from "@/lib/audience";
-import type { AudienceGroup, EventStatus, MeetupEvent } from "@/lib/types";
-import { STATUS_LABEL } from "@/lib/types";
-import { formatDateShort, todayIso } from "@/lib/utils";
+import type { AudienceGroup, MeetupEvent } from "@/lib/types";
+import { todayIso } from "@/lib/utils";
 import { EmptyState, FilterChips, SectionHeading } from "./ui";
 
-const STATUSES: EventStatus[] = [
-  "confirmed",
-  "rain-delay",
-  "canceled",
-  "relocated",
-];
-
-type Filter = "upcoming" | "past" | "all";
+type Filter = "upcoming" | "past" | "pending" | "all";
 
 /** Month/day for the little calendar tile on each row. */
 function dateTile(iso: string): { month: string; day: string } {
@@ -33,27 +25,17 @@ function dateTile(iso: string): { month: string; day: string } {
 export function EventsPanel({
   events,
   groups,
-  busyId,
-  onSave,
+  onSaved,
 }: {
-  /** Approved events, sorted by date ascending. */
+  /** Every event, approved or not — admins can edit any of them. */
   events: MeetupEvent[];
   groups: AudienceGroup[];
-  busyId: string | null;
-  onSave: (
-    eventId: string,
-    draft: { status: EventStatus; note: string; tags: string[] },
-  ) => Promise<void>;
+  /** Reload admin data after an edit lands. */
+  onSaved: () => void;
 }) {
   const [filter, setFilter] = useState<Filter>("upcoming");
   const [query, setQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<{
-    status: EventStatus;
-    note: string;
-    tags: string[];
-  } | null>(null);
-  const [saving, setSaving] = useState(false);
 
   const labels = useMemo(() => groupNameMap(groups), [groups]);
   const today = todayIso();
@@ -63,6 +45,7 @@ export function EventsPanel({
       all: events.length,
       upcoming: events.filter((e) => e.date >= today).length,
       past: events.filter((e) => e.date < today).length,
+      pending: events.filter((e) => !e.approved).length,
     }),
     [events, today],
   );
@@ -73,6 +56,7 @@ export function EventsPanel({
       .filter((e) => {
         if (filter === "upcoming" && e.date < today) return false;
         if (filter === "past" && e.date >= today) return false;
+        if (filter === "pending" && e.approved) return false;
         if (!q) return true;
         return [e.title, e.location, e.host]
           .filter(Boolean)
@@ -85,37 +69,12 @@ export function EventsPanel({
 
   const editing = editingId ? events.find((e) => e.id === editingId) : null;
 
-  function startEdit(e: MeetupEvent) {
-    setEditingId(e.id);
-    setDraft({
-      status: e.status,
-      note: e.statusNote || "",
-      tags: e.tags || [],
-    });
-  }
-
-  function close() {
-    setEditingId(null);
-    setDraft(null);
-  }
-
-  async function submit() {
-    if (!editingId || !draft) return;
-    setSaving(true);
-    try {
-      await onSave(editingId, draft);
-      close();
-    } finally {
-      setSaving(false);
-    }
-  }
-
   return (
     <section>
       <SectionHeading
-        title="Live events"
+        title="All events"
         count={events.length}
-        hint="Set a status note for the Happenings ticker and choose which audience groups can see each event."
+        hint="Edit any event end to end — details, status note for the Happenings ticker, and which audience groups can see it."
       />
 
       <div className="mb-5 flex flex-wrap items-center gap-3">
@@ -136,6 +95,7 @@ export function EventsPanel({
           options={[
             { value: "upcoming", label: "Upcoming", count: counts.upcoming },
             { value: "past", label: "Past", count: counts.past },
+            { value: "pending", label: "Pending", count: counts.pending },
             { value: "all", label: "All", count: counts.all },
           ]}
         />
@@ -146,12 +106,12 @@ export function EventsPanel({
           icon={Icons.calendar}
           title={
             events.length === 0
-              ? "No approved events yet"
+              ? "No events yet"
               : "Nothing matches those filters"
           }
           hint={
             events.length === 0
-              ? "Approve an event from the Review tab and it will show up here."
+              ? "Events show up here as soon as someone submits one."
               : undefined
           }
         />
@@ -177,6 +137,9 @@ export function EventsPanel({
                     {e.title}
                   </h3>
                   <StatusPill status={e.status} />
+                  {!e.approved && (
+                    <span className="badge badge-amber">Awaiting approval</span>
+                  )}
                 </div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
                   <span className="inline-flex items-center gap-1.5">
@@ -184,6 +147,9 @@ export function EventsPanel({
                   </span>
                   <span className="inline-flex items-center gap-1.5">
                     {Icons.pin} {e.location}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <UsersIcon className="h-4 w-4" /> {e.host}
                   </span>
                 </div>
                 {e.statusNote && (
@@ -203,7 +169,7 @@ export function EventsPanel({
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
-                onClick={() => startEdit(e)}
+                onClick={() => setEditingId(e.id)}
               >
                 <PencilIcon className="h-4 w-4" />
                 Edit
@@ -213,89 +179,15 @@ export function EventsPanel({
         </div>
       )}
 
-      <Modal
-        open={Boolean(editing && draft)}
-        onClose={close}
-        title={editing?.title || "Edit event"}
-        description={
-          editing
-            ? `${formatDateShort(editing.date)} · ${editing.time} · ${editing.location}`
-            : undefined
-        }
-        footer={
-          <>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={close}
-              disabled={saving}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => void submit()}
-              disabled={saving || busyId === editingId}
-            >
-              {saving ? "Saving…" : "Save changes"}
-            </button>
-          </>
-        }
-      >
-        {draft && (
-          <div className="space-y-5">
-            <div>
-              <span className="field-label">Status</span>
-              <div className="flex flex-wrap gap-2">
-                {STATUSES.map((s) => {
-                  const on = draft.status === s;
-                  return (
-                    <button
-                      key={s}
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() => setDraft({ ...draft, status: s })}
-                      className={[
-                        "rounded-full border px-3.5 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-blue/30",
-                        on
-                          ? "border-blue bg-blue text-white"
-                          : "border-border bg-surface text-muted hover:bg-surface-2 hover:text-ink",
-                      ].join(" ")}
-                    >
-                      {STATUS_LABEL[s]}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div>
-              <label className="field-label" htmlFor="event-note">
-                Status note{" "}
-                <span className="field-hint">— shown on the ticker</span>
-              </label>
-              <input
-                id="event-note"
-                className="field"
-                value={draft.note}
-                onChange={(e) => setDraft({ ...draft, note: e.target.value })}
-                placeholder="e.g. Moved to Pavilion B"
-              />
-            </div>
-
-            <div className="border-t border-border pt-4">
-              <span className="field-label">Audience</span>
-              <TagPicker
-                groups={groups}
-                selected={draft.tags}
-                onChange={(tags) => setDraft({ ...draft, tags })}
-                idPrefix={`evt-tag-${editingId}`}
-              />
-            </div>
-          </div>
-        )}
-      </Modal>
+      {editing && (
+        <EventEditModal
+          key={editing.id}
+          event={editing}
+          groups={groups}
+          onClose={() => setEditingId(null)}
+          onSaved={onSaved}
+        />
+      )}
     </section>
   );
 }

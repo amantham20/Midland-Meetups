@@ -21,10 +21,11 @@ struct EventDetailView: View {
         return data.rsvps.first { $0.eventId == event.id && $0.userId == uid }
     }
 
-    /// The host who submitted it can fix their own event; admins can fix any.
+    /// Whoever submitted it and whoever is tagged as host can fix their own
+    /// event; admins can fix any.
     private var canEdit: Bool {
         guard let uid = session.uid else { return false }
-        return session.isAdmin || event.createdBy == uid
+        return session.isAdmin || event.createdBy == uid || event.hostUserId == uid
     }
 
     private var rsvpName: String {
@@ -115,7 +116,8 @@ struct EventDetailView: View {
                 EventEditSheet(
                     event: event,
                     groups: data.groups,
-                    myName: session.preferredName
+                    myName: session.preferredName,
+                    myUserId: session.uid ?? ""
                 ) {
                     await data.loadEvents()
                     if let uid = session.uid {

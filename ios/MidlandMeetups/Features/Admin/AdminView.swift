@@ -18,8 +18,9 @@ struct AdminView: View {
     private var pendingEvents: [MeetupEvent] { snapshot.events.filter { !$0.approved } }
     private var pendingMemories: [Memory] { snapshot.memories.filter { !$0.approved } }
     private var pendingSquad: [SquadMember] { snapshot.squad.filter { !$0.approved } }
-    private var approvedEvents: [MeetupEvent] {
-        snapshot.events.filter(\.approved).sorted { $0.date > $1.date }
+    /// Every event, pending included — admins edit all of them here.
+    private var allEvents: [MeetupEvent] {
+        snapshot.events.sorted { $0.date > $1.date }
     }
 
     var body: some View {
@@ -54,8 +55,14 @@ struct AdminView: View {
         .refreshable { await load() }
         .sheet(item: $editingEvent) { event in
             NavigationStack {
-                EventAdminSheet(event: event, groups: snapshot.groups) { status, note, tags in
-                    await applyEventChanges(event: event, status: status, note: note, tags: tags)
+                EventEditSheet(
+                    event: event,
+                    groups: snapshot.groups,
+                    myName: session.preferredName,
+                    myUserId: session.uid ?? ""
+                ) {
+                    await load()
+                    await data.refreshFeed(signedIn: session.isSignedIn)
                 }
             }
         }
@@ -173,13 +180,13 @@ struct AdminView: View {
 
     @ViewBuilder
     private var statusSection: some View {
-        SectionHeading(text: "Event status & audience")
+        SectionHeading(text: "All events")
             .padding(.top, 8)
 
-        if approvedEvents.isEmpty {
-            EmptyNote("No approved events yet.")
+        if allEvents.isEmpty {
+            EmptyNote("No events yet.")
         } else {
-            ForEach(approvedEvents) { event in
+            ForEach(allEvents) { event in
                 Button {
                     editingEvent = event
                 } label: {
@@ -207,6 +214,15 @@ struct AdminView: View {
                         }
                         Spacer(minLength: 0)
                         VStack(alignment: .trailing, spacing: 6) {
+                            if !event.approved {
+                                Text("Pending")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(Theme.amberInk)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(Theme.yellow.opacity(0.22))
+                                    .clipShape(Capsule())
+                            }
                             StatusPill(status: event.status)
                             Image(systemName: "chevron.right")
                                 .font(.system(size: 13, weight: .semibold))
@@ -306,32 +322,6 @@ struct AdminView: View {
             await data.refreshFeed(signedIn: session.isSignedIn)
         } catch {
             toasts.error((error as? LocalizedError)?.errorDescription ?? "Couldn't reject that.")
-        }
-    }
-
-    private func applyEventChanges(
-        event: MeetupEvent,
-        status: EventStatus,
-        note: String,
-        tags: [String]
-    ) async {
-        do {
-            if status != event.status || note != event.statusNote {
-                try await data.updateEventStatus(
-                    eventId: event.id,
-                    status: status,
-                    statusNote: note
-                )
-            }
-            if tags != event.tags {
-                try await data.updateEventTags(eventId: event.id, tags: tags)
-            }
-            editingEvent = nil
-            toasts.success("Event updated.")
-            await load()
-            await data.refreshFeed(signedIn: session.isSignedIn)
-        } catch {
-            toasts.error((error as? LocalizedError)?.errorDescription ?? "Couldn't update that event.")
         }
     }
 

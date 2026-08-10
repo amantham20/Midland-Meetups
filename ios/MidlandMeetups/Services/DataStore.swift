@@ -81,9 +81,12 @@ final class DataStore {
         }
     }
 
-    /// Everything this account submitted, approved or not — the pending ones
-    /// never show up in the public feed. One `whereEqualTo` and no `order`, so
-    /// it satisfies the `createdBy == uid` read rule without a composite index.
+    /// Every event this account is responsible for — the ones it submitted plus
+    /// the ones it's tagged as host on — approved or not; the pending ones show
+    /// up in no other feed.
+    ///
+    /// Two single-field queries rather than one `OR`: each matches a clause the
+    /// read rule can satisfy on its own, and neither needs a composite index.
     func loadMyEvents(userId: String) async {
         guard let client else { return }
         if myEventsUserId != userId {
@@ -92,11 +95,20 @@ final class DataStore {
         }
         defer { myEventsUserId = userId }
         do {
-            let query = FirestoreQuery("events")
+            let submitted = FirestoreQuery("events")
                 .whereEqualTo("createdBy", .string(userId))
-            myEvents = try await client.run(query)
-                .map(MeetupEvent.init(document:))
-                .sorted { $0.date < $1.date }
+            let hosting = FirestoreQuery("events")
+                .whereEqualTo("hostUserId", .string(userId))
+            async let submittedDocs = client.run(submitted)
+            async let hostingDocs = client.run(hosting)
+            let documents = try await submittedDocs + hostingDocs
+
+            var byId: [String: MeetupEvent] = [:]
+            for document in documents {
+                let event = MeetupEvent(document: document)
+                byId[event.id] = event
+            }
+            myEvents = byId.values.sorted { $0.date < $1.date }
             myEventsError = nil
         } catch {
             myEvents = []
@@ -135,6 +147,21 @@ final class DataStore {
         }
     }
 
+    /// Approved squad profiles linked to an Auth account — the people who can
+    /// be tagged as a host. Profiles with no `userId` have no account to hand
+    /// the event to, but their name can still be typed in.
+    var hostCandidates: [HostCandidate] {
+        squad
+            .compactMap { member -> HostCandidate? in
+                let name = member.name.trimmingCharacters(in: .whitespaces)
+                guard let userId = member.userId, !userId.isEmpty, !name.isEmpty else {
+                    return nil
+                }
+                return HostCandidate(userId: userId, name: name)
+            }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
     func loadGroups() async {
         guard let client else { return }
         guard let docs = try? await client.list("groups") else { return }
@@ -148,6 +175,7 @@ final class DataStore {
     func submitEvent(
         title: String,
         host: String,
+        hostUserId: String,
         date: String,
         time: String,
         location: String,
@@ -159,6 +187,7 @@ final class DataStore {
         try await client.create(in: "events", fields: [
             "title": .string(title),
             "host": .string(host),
+            "hostUserId": .string(hostUserId),
             "date": .string(date),
             "time": .string(time),
             "location": .string(location),
@@ -337,21 +366,6 @@ final class DataStore {
         try await client.delete(collection, id)
     }
 
-    func updateEventStatus(eventId: String, status: EventStatus, statusNote: String) async throws {
-        let client = try requireClient()
-        try await client.merge("events", eventId, fields: [
-            "status": .string(status.rawValue),
-            "statusNote": .string(statusNote.trimmingCharacters(in: .whitespacesAndNewlines)),
-        ])
-    }
-
-    func updateEventTags(eventId: String, tags: [String]) async throws {
-        let client = try requireClient()
-        try await client.merge("events", eventId, fields: [
-            "tags": .array(tags.map { .string($0) }),
-        ])
-    }
-
     /// Full edit of an event, for the host who submitted it or an admin —
     /// `updateEventDetails` on the web. `approved` and `createdBy` are never
     /// written, so a host can't self-approve or reassign an event.
@@ -362,6 +376,7 @@ final class DataStore {
         eventId: String,
         title: String,
         host: String,
+        hostUserId: String,
         date: String,
         time: String,
         location: String,
@@ -375,6 +390,7 @@ final class DataStore {
         var fields: [String: FirestoreValue] = [
             "title": .string(title.trimmingCharacters(in: .whitespaces)),
             "host": .string(host.trimmingCharacters(in: .whitespaces)),
+            "hostUserId": .string(hostUserId),
             "date": .string(date),
             "time": .string(time),
             "location": .string(location.trimmingCharacters(in: .whitespaces)),
