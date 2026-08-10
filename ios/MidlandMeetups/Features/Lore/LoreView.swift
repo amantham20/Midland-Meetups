@@ -7,14 +7,21 @@ struct LoreView: View {
     @Environment(ToastCenter.self) private var toasts
 
     @State private var title = ""
-    @State private var author = ""
+    @State private var byOther = false
+    @State private var otherAuthor = ""
     @State private var text = ""
     @State private var isSaving = false
     @State private var statusMessage = ""
 
+    /// Credited to you unless you said it's someone else's story.
+    private var resolvedAuthor: String {
+        (byOther ? otherAuthor : session.preferredName)
+            .trimmingCharacters(in: .whitespaces)
+    }
+
     private var canSubmit: Bool {
         !title.trimmingCharacters(in: .whitespaces).isEmpty
-            && !author.trimmingCharacters(in: .whitespaces).isEmpty
+            && !resolvedAuthor.isEmpty
             && !text.trimmingCharacters(in: .whitespaces).isEmpty
             && !isSaving
     }
@@ -48,9 +55,6 @@ struct LoreView: View {
         }
         .navigationTitle("The Lore Letter")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            if author.isEmpty { author = session.preferredName }
-        }
         .refreshable {
             await data.refreshFeed(signedIn: session.isSignedIn)
         }
@@ -81,11 +85,16 @@ struct LoreView: View {
                         TextField("e.g. The Great Canoe Mishap", text: $title)
                             .fieldBox()
                     }
-                    LabeledField(label: "Your name") {
-                        TextField("Who's telling it", text: $author)
-                            .textContentType(.name)
-                            .fieldBox()
-                    }
+                    AttributionField(
+                        label: "Storyteller",
+                        myName: session.preferredName,
+                        selfHint: "your account name",
+                        toggleLabel: "Someone else is telling it",
+                        otherLabel: "Their name",
+                        otherPlaceholder: "Who's telling it",
+                        byOther: $byOther,
+                        otherName: $otherAuthor
+                    )
                     LabeledField(label: "What happened") {
                         TextField(
                             "Tell it like you would at the next event.",
@@ -125,12 +134,14 @@ struct LoreView: View {
         do {
             try await data.submitMemory(
                 title: title.trimmingCharacters(in: .whitespaces),
-                author: author.trimmingCharacters(in: .whitespaces),
+                author: resolvedAuthor,
                 text: text.trimmingCharacters(in: .whitespaces),
                 userId: uid
             )
             title = ""
             text = ""
+            byOther = false
+            otherAuthor = ""
             let message = "Sent! Your story is in for review and will show up once approved."
             statusMessage = message
             toasts.success(message)

@@ -11,14 +11,20 @@ import Observation
 @Observable
 final class DataStore {
     var events: [MeetupEvent] = []
+    /// The signed-in account's own submissions, pending ones included.
+    var myEvents: [MeetupEvent] = []
     var rsvps: [Rsvp] = []
     var memories: [Memory] = []
     var squad: [SquadMember] = []
     var groups: [AudienceGroup] = []
 
     var eventsError: String?
+    var myEventsError: String?
     var memoriesError: String?
     var squadError: String?
+
+    /// Whose events `myEvents` holds — `nil` until the first load.
+    private(set) var myEventsUserId: String?
 
     private(set) var hasLoadedFeed = false
     private(set) var isRefreshing = false
@@ -75,6 +81,41 @@ final class DataStore {
         }
     }
 
+    /// Every event this account is responsible for — the ones it submitted plus
+    /// the ones it's tagged as host on — approved or not; the pending ones show
+    /// up in no other feed.
+    ///
+    /// Two single-field queries rather than one `OR`: each matches a clause the
+    /// read rule can satisfy on its own, and neither needs a composite index.
+    func loadMyEvents(userId: String) async {
+        guard let client else { return }
+        if myEventsUserId != userId {
+            myEvents = []
+            myEventsError = nil
+        }
+        defer { myEventsUserId = userId }
+        do {
+            let submitted = FirestoreQuery("events")
+                .whereEqualTo("createdBy", .string(userId))
+            let hosting = FirestoreQuery("events")
+                .whereEqualTo("hostUserId", .string(userId))
+            async let submittedDocs = client.run(submitted)
+            async let hostingDocs = client.run(hosting)
+            let documents = try await submittedDocs + hostingDocs
+
+            var byId: [String: MeetupEvent] = [:]
+            for document in documents {
+                let event = MeetupEvent(document: document)
+                byId[event.id] = event
+            }
+            myEvents = byId.values.sorted { $0.date < $1.date }
+            myEventsError = nil
+        } catch {
+            myEvents = []
+            myEventsError = "Couldn't load your events."
+        }
+    }
+
     func loadRsvps() async {
         guard let client else { return }
         rsvps = ((try? await client.list("rsvps")) ?? []).map(Rsvp.init(document:))
@@ -106,6 +147,21 @@ final class DataStore {
         }
     }
 
+    /// Approved squad profiles linked to an Auth account — the people who can
+    /// be tagged as a host. Profiles with no `userId` have no account to hand
+    /// the event to, but their name can still be typed in.
+    var hostCandidates: [HostCandidate] {
+        squad
+            .compactMap { member -> HostCandidate? in
+                let name = member.name.trimmingCharacters(in: .whitespaces)
+                guard let userId = member.userId, !userId.isEmpty, !name.isEmpty else {
+                    return nil
+                }
+                return HostCandidate(userId: userId, name: name)
+            }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
     func loadGroups() async {
         guard let client else { return }
         guard let docs = try? await client.list("groups") else { return }
@@ -119,6 +175,7 @@ final class DataStore {
     func submitEvent(
         title: String,
         host: String,
+        hostUserId: String,
         date: String,
         time: String,
         location: String,
@@ -130,6 +187,7 @@ final class DataStore {
         try await client.create(in: "events", fields: [
             "title": .string(title),
             "host": .string(host),
+            "hostUserId": .string(hostUserId),
             "date": .string(date),
             "time": .string(time),
             "location": .string(location),
@@ -308,19 +366,44 @@ final class DataStore {
         try await client.delete(collection, id)
     }
 
-    func updateEventStatus(eventId: String, status: EventStatus, statusNote: String) async throws {
+    /// Full edit of an event, for the host who submitted it or an admin —
+    /// `updateEventDetails` on the web. `approved` and `createdBy` are never
+    /// written, so a host can't self-approve or reassign an event.
+    ///
+    /// Pass `resetReminder` when the slot moved so the day-before push fires
+    /// again for the new date.
+    func updateEventDetails(
+        eventId: String,
+        title: String,
+        host: String,
+        hostUserId: String,
+        date: String,
+        time: String,
+        location: String,
+        description: String,
+        status: EventStatus,
+        statusNote: String,
+        tags: [String],
+        resetReminder: Bool
+    ) async throws {
         let client = try requireClient()
-        try await client.merge("events", eventId, fields: [
+        var fields: [String: FirestoreValue] = [
+            "title": .string(title.trimmingCharacters(in: .whitespaces)),
+            "host": .string(host.trimmingCharacters(in: .whitespaces)),
+            "hostUserId": .string(hostUserId),
+            "date": .string(date),
+            "time": .string(time),
+            "location": .string(location.trimmingCharacters(in: .whitespaces)),
+            "description": .string(description.trimmingCharacters(in: .whitespaces)),
             "status": .string(status.rawValue),
             "statusNote": .string(statusNote.trimmingCharacters(in: .whitespacesAndNewlines)),
-        ])
-    }
-
-    func updateEventTags(eventId: String, tags: [String]) async throws {
-        let client = try requireClient()
-        try await client.merge("events", eventId, fields: [
             "tags": .array(tags.map { .string($0) }),
-        ])
+            "updatedAt": .timestamp(Date()),
+        ]
+        if resetReminder {
+            fields["reminderSent"] = .boolean(false)
+        }
+        try await client.merge("events", eventId, fields: fields)
     }
 
     @discardableResult

@@ -9,14 +9,21 @@ struct EventDetailView: View {
     @Environment(DataStore.self) private var data
     @Environment(ToastCenter.self) private var toasts
 
-    @State private var name = ""
     @State private var isSaving = false
     @State private var statusMessage = ""
     @State private var isAddingToCalendar = false
+    @State private var isEditing = false
 
     private var mine: Rsvp? {
         guard let uid = session.uid else { return nil }
         return data.rsvps.first { $0.eventId == event.id && $0.userId == uid }
+    }
+
+    /// Whoever submitted it and whoever is tagged as host can fix their own
+    /// event; admins can fix any.
+    private var canEdit: Bool {
+        guard let uid = session.uid else { return false }
+        return session.isAdmin || event.createdBy == uid || event.hostUserId == uid
     }
 
     private var goingCount: Int {
@@ -63,23 +70,46 @@ struct EventDetailView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Button {
-                Task { await addToCalendar() }
-            } label: {
-                Label(
-                    isAddingToCalendar ? "Adding…" : "Add to Calendar",
-                    systemImage: "calendar.badge.plus"
-                )
+            HStack(spacing: 10) {
+                Button {
+                    Task { await addToCalendar() }
+                } label: {
+                    Label(
+                        isAddingToCalendar ? "Adding…" : "Add to Calendar",
+                        systemImage: "calendar.badge.plus"
+                    )
+                }
+                .buttonStyle(SecondaryButtonStyle(tint: Theme.blue))
+                .disabled(isAddingToCalendar)
+
+                if canEdit {
+                    Button {
+                        isEditing = true
+                    } label: {
+                        Label("Edit event", systemImage: "pencil")
+                    }
+                    .buttonStyle(SecondaryButtonStyle())
+                }
             }
-            .buttonStyle(SecondaryButtonStyle(tint: Theme.blue))
-            .disabled(isAddingToCalendar)
 
             rsvpCard
         }
         .navigationTitle(event.title)
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            if name.isEmpty { name = mine?.name ?? session.preferredName }
+        .sheet(isPresented: $isEditing) {
+            NavigationStack {
+                EventEditSheet(
+                    event: event,
+                    groups: data.groups,
+                    myName: session.preferredName,
+                    myUserId: session.uid ?? ""
+                ) {
+                    await data.loadEvents()
+                    if let uid = session.uid {
+                        await data.loadMyEvents(userId: uid)
+                    }
+                }
+            }
         }
     }
 
@@ -94,11 +124,10 @@ struct EventDetailView: View {
             if !session.isSignedIn {
                 SignInPromptInline(message: "Sign in to RSVP and keep your name on the list.")
             } else {
-                LabeledField(label: "Name shown on RSVPs") {
-                    TextField("Your name", text: $name)
-                        .textContentType(.name)
-                        .fieldBox()
-                }
+                Text("You'll show up on the list as **\(session.preferredName)**.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 HStack(spacing: 10) {
                     rsvpButton(
@@ -155,14 +184,8 @@ struct EventDetailView: View {
             toasts.info("Sign in to RSVP.")
             return
         }
-        let displayName = name.trimmingCharacters(in: .whitespaces).isEmpty
-            ? session.preferredName
-            : name.trimmingCharacters(in: .whitespaces)
-        guard !displayName.isEmpty else {
-            statusMessage = "Add your name first."
-            toasts.info("Add your name first.")
-            return
-        }
+        // RSVPs always go on the list under the account's own name.
+        let displayName = session.preferredName.isEmpty ? "Guest" : session.preferredName
 
         // Tapping the active choice clears the RSVP, same as the web toggle.
         let next: RsvpStatus? = mine?.status == value ? nil : value

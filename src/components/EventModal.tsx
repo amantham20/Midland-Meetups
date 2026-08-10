@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { MeetupEvent, Rsvp, RsvpStatus } from "@/lib/types";
+import type { AudienceGroup, MeetupEvent, Rsvp, RsvpStatus } from "@/lib/types";
 import {
+  accountDisplayName,
   buildGoogleCalendarUrl,
   formatDateLong,
   formatTimeDisplay,
@@ -11,27 +12,46 @@ import {
 import { setRsvp } from "@/lib/firebase/data";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
-import { Icons } from "./Icons";
+import { EventEditModal } from "./EventEditModal";
+import { Icons, PencilIcon } from "./Icons";
 import { StatusPill } from "./StatusPill";
 
 function EventModalBody({
   event,
   rsvps,
+  groups,
   onClose,
 }: {
   event: MeetupEvent;
   rsvps: Rsvp[];
+  /** All audience groups — passed through to the edit dialog. */
+  groups: AudienceGroup[];
   onClose: () => void;
 }) {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const toast = useToast();
-  const [name, setName] = useState(user?.displayName || "");
+  const myName = accountDisplayName(user);
+  const mine = user
+    ? rsvps.find((r) => r.eventId === event.id && r.userId === user.uid)
+    : null;
   const [statusMsg, setStatusMsg] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+
+  // Whoever submitted it and whoever is tagged as host can fix their own
+  // event; admins can fix any.
+  const canEdit = Boolean(
+    user &&
+      (isAdmin ||
+        (event.createdBy && event.createdBy === user.uid) ||
+        (event.hostUserId && event.hostUserId === user.uid)),
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      // While the edit dialog is up it owns Escape — closing both at once
+      // would throw away the draft and the event the user was reading.
+      if (e.key === "Escape" && !editing) onClose();
     };
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
@@ -39,11 +59,8 @@ function EventModalBody({
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
     };
-  }, [onClose]);
+  }, [onClose, editing]);
 
-  const mine = user
-    ? rsvps.find((r) => r.eventId === event.id && r.userId === user.uid)
-    : null;
   const going = rsvps.filter((r) => r.eventId === event.id && r.status === "going").length;
   const notGoing = rsvps.filter(
     (r) => r.eventId === event.id && r.status === "not-going",
@@ -55,12 +72,8 @@ function EventModalBody({
       toast.info("Sign in to RSVP.");
       return;
     }
-    const displayName = name.trim() || user.displayName || user.email || "Guest";
-    if (!displayName.trim()) {
-      setStatusMsg("Add your name first.");
-      toast.info("Add your name first.");
-      return;
-    }
+    // RSVPs always go on the list under the account's own name.
+    const displayName = myName.trim() || user.email || "Guest";
 
     const next = mine?.status === value ? null : value;
     setSaving(true);
@@ -145,14 +158,26 @@ function EventModalBody({
           {event.description}
         </p>
 
-        <a
-          href={buildGoogleCalendarUrl(event)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mb-6 inline-flex text-sm font-semibold text-blue hover:text-blue-ink"
-        >
-          Add to Google Calendar
-        </a>
+        <div className="mb-6 flex flex-wrap items-center gap-4">
+          <a
+            href={buildGoogleCalendarUrl(event)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex text-sm font-semibold text-blue hover:text-blue-ink"
+          >
+            Add to Google Calendar
+          </a>
+          {canEdit && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setEditing(true)}
+            >
+              <PencilIcon className="h-4 w-4" />
+              Edit event
+            </button>
+          )}
+        </div>
 
         <div className="rounded-lg border border-border bg-surface-2/50 p-4">
           <div className="mb-2 text-sm font-semibold text-ink">Are you going?</div>
@@ -165,17 +190,13 @@ function EventModalBody({
             </p>
           ) : (
             <>
-              <label className="mb-2 block text-sm text-muted" htmlFor="rsvp-name">
-                Name shown on RSVPs
-              </label>
-              <input
-                id="rsvp-name"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Your name"
-                className="mb-3 w-full rounded-md border border-border bg-surface px-3 py-2 text-ink outline-none focus:border-blue"
-              />
+              <p className="mb-3 text-sm text-muted">
+                You&apos;ll show up on the list as{" "}
+                <strong className="font-semibold text-ink">
+                  {myName || user.email}
+                </strong>
+                .
+              </p>
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -212,6 +233,14 @@ function EventModalBody({
           </p>
         </div>
       </div>
+
+      {editing && (
+        <EventEditModal
+          event={event}
+          groups={groups}
+          onClose={() => setEditing(false)}
+        />
+      )}
     </div>
   );
 }
@@ -219,15 +248,23 @@ function EventModalBody({
 export function EventModal({
   event,
   rsvps,
+  groups = [],
   onClose,
 }: {
   event: MeetupEvent | null;
   rsvps: Rsvp[];
+  groups?: AudienceGroup[];
   onClose: () => void;
 }) {
   if (!event) return null;
   // key remounts local form state when switching events
   return (
-    <EventModalBody key={event.id} event={event} rsvps={rsvps} onClose={onClose} />
+    <EventModalBody
+      key={event.id}
+      event={event}
+      rsvps={rsvps}
+      groups={groups}
+      onClose={onClose}
+    />
   );
 }

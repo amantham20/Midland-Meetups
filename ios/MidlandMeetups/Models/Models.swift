@@ -29,7 +29,11 @@ enum RsvpStatus: String, Codable, Hashable {
 struct MeetupEvent: Identifiable, Hashable {
     var id: String
     var title: String
+    /// Display name of the host, tagged member or free text.
     var host: String
+    /// Auth uid of the tagged host, when the host is a member rather than a
+    /// typed-in name. A tagged host can edit the event like its submitter.
+    var hostUserId: String
     /// `YYYY-MM-DD`
     var date: String
     /// Display time, e.g. "6:30 PM"
@@ -47,6 +51,7 @@ struct MeetupEvent: Identifiable, Hashable {
         id = document.id
         title = document.string("title")
         host = document.string("host")
+        hostUserId = document.string("hostUserId")
         date = document.string("date")
         time = document.string("time")
         location = document.string("location")
@@ -57,6 +62,14 @@ struct MeetupEvent: Identifiable, Hashable {
         tags = document.stringArray("tags")
         createdBy = document.optionalString("createdBy")
     }
+}
+
+/// A member you can tag as host: an approved squad profile with an Auth account.
+struct HostCandidate: Identifiable, Hashable {
+    var userId: String
+    var name: String
+
+    var id: String { userId }
 }
 
 // MARK: - Lore

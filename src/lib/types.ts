@@ -20,7 +20,13 @@ export interface AudienceGroup {
 export interface MeetupEvent {
   id: string;
   title: string;
+  /** Display name of the host, tagged member or free text. */
   host: string;
+  /**
+   * Auth uid of the tagged host, when the host is a member rather than a
+   * typed-in name. A tagged host can edit the event like its submitter.
+   */
+  hostUserId?: string;
   date: string; // YYYY-MM-DD
   time: string; // display time, e.g. "6:30 PM" or "18:30"
   location: string;
@@ -33,6 +39,12 @@ export interface MeetupEvent {
   createdBy?: string;
   createdAt?: string;
   reminderSent?: boolean;
+}
+
+/** A member you can tag as host: an approved squad profile with an Auth account. */
+export interface HostCandidate {
+  userId: string;
+  name: string;
 }
 
 export interface Memory {
