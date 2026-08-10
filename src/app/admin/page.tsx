@@ -21,6 +21,7 @@ import {
   approveDocument,
   deleteGroup,
   fetchAllForAdmin,
+  isAdminClaimEndpointConfigured,
   linkUserIdsForSquadEmails,
   rejectDocument,
   requestAdminClaim,
@@ -49,6 +50,16 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "events", label: "Events" },
 ];
 
+/** Firestore rejected the read/write outright — not a network or index problem. */
+function isPermissionDenied(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: unknown }).code === "permission-denied"
+  );
+}
+
 export default function AdminPage() {
   const {
     user,
@@ -71,6 +82,21 @@ export default function AdminPage() {
   const [dataLoading, setDataLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("review");
   const [copied, setCopied] = useState(false);
+  /** null until the availability probe answers. */
+  const [claimEndpointReady, setClaimEndpointReady] = useState<boolean | null>(
+    null,
+  );
+  /** Set when Firestore itself rejects admin reads (rules/env drift). */
+  const [accessDenied, setAccessDenied] = useState(false);
+
+  /**
+   * Firestore rules accept EITHER the `admin` custom claim OR a bootstrap UID
+   * (`isBootstrapAdmin()`, kept in sync with NEXT_PUBLIC_ADMIN_UIDS). Listed
+   * UIDs can already approve and set status — the claim is the optional
+   * long-term path, not a prerequisite. Only a real denial from Firestore
+   * proves writes are blocked.
+   */
+  const writesAllowed = (hasAdminClaim || isAdminListed) && !accessDenied;
 
   const applyAdminData = useCallback(
     (data: {
@@ -84,6 +110,7 @@ export default function AdminPage() {
       setSquad(data.squad);
       setGroups(data.groups);
       setError(null);
+      setAccessDenied(false);
     },
     [],
   );
@@ -104,20 +131,34 @@ export default function AdminPage() {
       applyAdminData(data);
     } catch (err) {
       console.error(err);
+      const denied = isPermissionDenied(err);
+      setAccessDenied(denied);
       setError(
-        hasAdminClaim
-          ? "Couldn't load admin data. Check Firestore rules and indexes."
-          : "Couldn't load admin data. Your account needs the admin custom claim (Firestore rules check request.auth.token.admin).",
+        denied
+          ? "Firestore denied admin access. Rules admit the `admin` custom claim or a UID listed in isBootstrapAdmin() — check your UID is in firestore.rules and that the rules are deployed."
+          : "Couldn't load admin data. Check Firestore rules and indexes.",
       );
     } finally {
       setDataLoading(false);
     }
-  }, [applyAdminData, hasAdminClaim]);
+  }, [applyAdminData]);
 
   useEffect(() => {
     if (!isAdmin) return;
     void load();
   }, [isAdmin, load]);
+
+  // Only offer the claim button where the server can actually mint claims.
+  useEffect(() => {
+    if (!isAdmin || hasAdminClaim) return;
+    let active = true;
+    void isAdminClaimEndpointConfigured().then((ready) => {
+      if (active) setClaimEndpointReady(ready);
+    });
+    return () => {
+      active = false;
+    };
+  }, [isAdmin, hasAdminClaim]);
 
   const pendingEvents = useMemo(
     () => events.filter((e) => !e.approved),
@@ -176,6 +217,7 @@ export default function AdminPage() {
       toast.success("Approved.");
     } catch (err) {
       console.error(err);
+      if (isPermissionDenied(err)) setAccessDenied(true);
       const msg = "Approve failed. Check admin access and Firestore rules.";
       setError(msg);
       toast.error(msg);
@@ -196,6 +238,7 @@ export default function AdminPage() {
       toast.success("Rejected and removed.");
     } catch (err) {
       console.error(err);
+      if (isPermissionDenied(err)) setAccessDenied(true);
       const msg = "Reject failed. Check admin access and Firestore rules.";
       setError(msg);
       toast.error(msg);
@@ -296,8 +339,17 @@ export default function AdminPage() {
       await load();
     } catch (err) {
       console.error(err);
-      const msg =
-        "Could not grant admin claim. Bootstrap UID already works for approve/import without a service account.";
+      // Surface the server's actual reason (missing service account, refused
+      // caller, …) instead of a canned line that hides it.
+      const reason = err instanceof Error && err.message ? err.message : "";
+      const msg = [
+        reason || "Could not grant admin claim.",
+        isAdminListed
+          ? "Your UID is on the bootstrap list, so approve and status writes still work."
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
       setError(msg);
       toast.error(msg);
     } finally {
@@ -374,22 +426,22 @@ export default function AdminPage() {
         lede="Approve what comes in, keep squad profiles tidy, and decide who sees each event."
       />
 
-      {/* Access strip — quiet when everything is granted, loud when it isn't */}
+      {/* Access strip — loud only when writes genuinely can't go through */}
       <div
         className={[
           "card mb-6 flex flex-wrap items-center gap-x-4 gap-y-3 p-3.5",
-          hasAdminClaim ? "" : "border-yellow/50 bg-yellow/8",
+          writesAllowed ? "" : "border-yellow/50 bg-yellow/8",
         ].join(" ")}
       >
         <span
           className={[
             "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
-            hasAdminClaim
+            writesAllowed
               ? "bg-green/15 text-green-ink"
               : "bg-yellow/25 text-yellow-ink",
           ].join(" ")}
         >
-          {hasAdminClaim ? (
+          {writesAllowed ? (
             <ShieldIcon className="h-5 w-5" />
           ) : (
             <AlertIcon className="h-5 w-5" />
@@ -397,9 +449,11 @@ export default function AdminPage() {
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-ink">
-            {hasAdminClaim
-              ? "Admin claim active — writes allowed"
-              : "No admin custom claim — approve and status writes will fail"}
+            {accessDenied
+              ? "Firestore denied this account — approve and status writes will fail"
+              : hasAdminClaim
+                ? "Admin claim active — writes allowed"
+                : "Bootstrap admin — writes allowed"}
           </p>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
             <span className="font-mono">{user.uid}</span>
@@ -408,7 +462,25 @@ export default function AdminPage() {
             >
               {isAdminListed ? "listed in ADMIN_UIDS" : "not in ADMIN_UIDS"}
             </span>
+            <span className={`badge ${hasAdminClaim ? "badge-blue" : "badge-neutral"}`}>
+              {hasAdminClaim ? "admin claim" : "no admin claim"}
+            </span>
           </p>
+          {!hasAdminClaim && isAdminListed && !accessDenied && (
+            <p className="mt-1 text-xs text-muted">
+              Firestore rules accept this UID via{" "}
+              <code className="rounded bg-surface-2 px-1 font-mono">
+                isBootstrapAdmin()
+              </code>
+              . The{" "}
+              <code className="rounded bg-surface-2 px-1 font-mono">admin</code>{" "}
+              custom claim is optional
+              {claimEndpointReady === false
+                ? " and needs FIREBASE_SERVICE_ACCOUNT_JSON on the server"
+                : ""}
+              .
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" className="btn btn-ghost btn-sm" onClick={copyUid}>
@@ -419,7 +491,7 @@ export default function AdminPage() {
             )}
             {copied ? "Copied" : "Copy UID"}
           </button>
-          {!hasAdminClaim && (
+          {!hasAdminClaim && claimEndpointReady === true && (
             <button
               type="button"
               className="btn btn-primary btn-sm"

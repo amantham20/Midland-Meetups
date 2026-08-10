@@ -33,13 +33,21 @@ export function Modal({
   children: React.ReactNode;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
   const titleId = useId();
   const descId = useId();
+
+  // Callers pass a fresh closure every render, so onClose is kept in a ref
+  // instead of being an effect dependency below: re-running that effect would
+  // pull focus back to the panel mid-typing, blurring the field in use.
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
     };
     document.addEventListener("keydown", onKey);
     const prevOverflow = document.body.style.overflow;
@@ -50,7 +58,7 @@ export function Modal({
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prevOverflow;
     };
-  }, [open, onClose]);
+  }, [open]);
 
   // Dialogs only ever open from a user action, so SSR always renders nothing
   // here and there is no hydration mismatch to guard against with state.

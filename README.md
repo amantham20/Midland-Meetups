@@ -122,9 +122,11 @@ Do **not** run `firebase deploy --only functions` — that needs the Blaze plan.
 ### Grant yourself admin
 
 1. Sign in once and copy your UID (Auth console or `/admin`).
-2. Put it in `NEXT_PUBLIC_ADMIN_UIDS` and in `firestore.rules` bootstrap list; redeploy rules if you change the rules file.
-3. Optional: add `FIREBASE_SERVICE_ACCOUNT_JSON`, open `/admin` → **Request admin claim** (hits `POST /api/admin/claim`).
+2. Put it in `NEXT_PUBLIC_ADMIN_UIDS` **and** in the `firestore.rules` `isBootstrapAdmin()` list; redeploy rules if you change the rules file. That alone unlocks approve/reject and event status — no service account needed.
+3. Optional: add `FIREBASE_SERVICE_ACCOUNT_JSON`, open `/admin` → **Request admin claim** (hits `POST /api/admin/claim`). The button only appears when the server can actually mint claims; without a service account the bootstrap list is the whole story.
 4. Approve submissions on `/admin`.
+
+The `/admin` access strip shows which of the two paths is granting you access. It turns yellow only when Firestore actually rejects a read — the usual cause is a UID present in `NEXT_PUBLIC_ADMIN_UIDS` but missing from `isBootstrapAdmin()` in the deployed rules.
 
 You can always flip `approved: true` in the Firestore console.
 
