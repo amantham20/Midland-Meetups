@@ -9,8 +9,6 @@ struct EventDetailView: View {
     @Environment(DataStore.self) private var data
     @Environment(ToastCenter.self) private var toasts
 
-    @State private var byOther = false
-    @State private var otherName = ""
     @State private var isSaving = false
     @State private var statusMessage = ""
     @State private var isAddingToCalendar = false
@@ -26,11 +24,6 @@ struct EventDetailView: View {
     private var canEdit: Bool {
         guard let uid = session.uid else { return false }
         return session.isAdmin || event.createdBy == uid || event.hostUserId == uid
-    }
-
-    private var rsvpName: String {
-        let chosen = byOther ? otherName : session.preferredName
-        return chosen.trimmingCharacters(in: .whitespaces)
     }
 
     private var goingCount: Int {
@@ -103,14 +96,6 @@ struct EventDetailView: View {
         }
         .navigationTitle(event.title)
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            // An RSVP saved under a different name keeps that name in view.
-            if let saved = mine?.name,
-               saved.caseInsensitiveCompare(session.preferredName) != .orderedSame {
-                byOther = true
-                otherName = saved
-            }
-        }
         .sheet(isPresented: $isEditing) {
             NavigationStack {
                 EventEditSheet(
@@ -139,16 +124,10 @@ struct EventDetailView: View {
             if !session.isSignedIn {
                 SignInPromptInline(message: "Sign in to RSVP and keep your name on the list.")
             } else {
-                AttributionField(
-                    label: "Name shown on RSVPs",
-                    myName: session.preferredName,
-                    selfHint: "your account name",
-                    toggleLabel: "Show a different name",
-                    otherLabel: "Name to show",
-                    otherPlaceholder: "Your name",
-                    byOther: $byOther,
-                    otherName: $otherName
-                )
+                Text("You'll show up on the list as **\(session.preferredName)**.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 HStack(spacing: 10) {
                     rsvpButton(
@@ -205,12 +184,8 @@ struct EventDetailView: View {
             toasts.info("Sign in to RSVP.")
             return
         }
-        let displayName = rsvpName.isEmpty ? session.preferredName : rsvpName
-        guard !displayName.isEmpty else {
-            statusMessage = "Add your name first."
-            toasts.info("Add your name first.")
-            return
-        }
+        // RSVPs always go on the list under the account's own name.
+        let displayName = session.preferredName.isEmpty ? "Guest" : session.preferredName
 
         // Tapping the active choice clears the RSVP, same as the web toggle.
         let next: RsvpStatus? = mine?.status == value ? nil : value

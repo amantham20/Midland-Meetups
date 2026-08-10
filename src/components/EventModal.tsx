@@ -12,7 +12,6 @@ import {
 import { setRsvp } from "@/lib/firebase/data";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
-import { AttributionField } from "./AttributionField";
 import { EventEditModal } from "./EventEditModal";
 import { Icons, PencilIcon } from "./Icons";
 import { StatusPill } from "./StatusPill";
@@ -35,13 +34,6 @@ function EventModalBody({
   const mine = user
     ? rsvps.find((r) => r.eventId === event.id && r.userId === user.uid)
     : null;
-  // An RSVP already saved under a different name keeps that name in view.
-  const savedAlias =
-    mine && mine.name.trim().toLowerCase() !== myName.trim().toLowerCase()
-      ? mine.name
-      : "";
-  const [byOther, setByOther] = useState(() => Boolean(savedAlias));
-  const [otherName, setOtherName] = useState(() => savedAlias);
   const [statusMsg, setStatusMsg] = useState("");
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -80,13 +72,8 @@ function EventModalBody({
       toast.info("Sign in to RSVP.");
       return;
     }
-    const displayName =
-      (byOther ? otherName : myName).trim() || user.email || "Guest";
-    if (!displayName) {
-      setStatusMsg("Add your name first.");
-      toast.info("Add your name first.");
-      return;
-    }
+    // RSVPs always go on the list under the account's own name.
+    const displayName = myName.trim() || user.email || "Guest";
 
     const next = mine?.status === value ? null : value;
     setSaving(true);
@@ -203,20 +190,13 @@ function EventModalBody({
             </p>
           ) : (
             <>
-              <AttributionField
-                idPrefix="rsvp-name"
-                label="Name shown on RSVPs"
-                myName={myName}
-                selfHint="— your account name"
-                toggleLabel="Show a different name"
-                otherLabel="Name to show"
-                otherPlaceholder="Your name"
-                byOther={byOther}
-                onByOtherChange={setByOther}
-                otherName={otherName}
-                onOtherNameChange={setOtherName}
-                disabled={saving}
-              />
+              <p className="mb-3 text-sm text-muted">
+                You&apos;ll show up on the list as{" "}
+                <strong className="font-semibold text-ink">
+                  {myName || user.email}
+                </strong>
+                .
+              </p>
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"

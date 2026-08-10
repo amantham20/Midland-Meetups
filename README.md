@@ -179,6 +179,8 @@ Photos are **not** in Cloud Storage. The browser compresses to ~320px JPEG and s
 
 `eventId`, `userId`, `name`, `status` (`going` \| `not-going`), `updatedAt`
 
+`name` is always the account's own name — there's no alias to pick when you RSVP.
+
 ### `fcmTokens/{token}`
 
 `token`, `userId`, `updatedAt`
