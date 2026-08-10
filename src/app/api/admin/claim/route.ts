@@ -10,6 +10,20 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
+ * GET /api/admin/claim
+ * Returns: { configured: boolean }
+ *
+ * Availability probe so the admin UI can tell "claims are impossible here"
+ * (no service account) apart from "the grant was refused". Deliberately
+ * unauthenticated: without the Admin SDK there is no way to verify an ID
+ * token, which is precisely the case this reports. Only the boolean is
+ * exposed — the same fact a signed-in caller already gets from a POST 503.
+ */
+export async function GET() {
+  return NextResponse.json({ configured: isAdminSdkConfigured() });
+}
+
+/**
  * POST /api/admin/claim
  * Body: { uid?: string }  — defaults to the caller's UID
  *
