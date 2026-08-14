@@ -6,6 +6,9 @@ struct MoreView: View {
     @Environment(DataStore.self) private var data
     @Environment(ToastCenter.self) private var toasts
 
+    @State private var isConfirmingDeletion = false
+    @State private var isDeleting = false
+
     var body: some View {
         List {
             Section {
@@ -72,6 +75,23 @@ struct MoreView: View {
                     } label: {
                         Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
                     }
+                    .disabled(isDeleting)
+
+                    Button(role: .destructive) {
+                        isConfirmingDeletion = true
+                    } label: {
+                        HStack {
+                            Label(
+                                isDeleting ? "Deleting account…" : "Delete account",
+                                systemImage: "trash"
+                            )
+                            if isDeleting {
+                                Spacer()
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(isDeleting)
                 } else {
                     NavigationLink {
                         LoginView()
@@ -95,5 +115,40 @@ struct MoreView: View {
         .navigationTitle("More")
         .navigationBarTitleDisplayMode(.inline)
         .tint(Theme.blue)
+        .alert("Delete your account?", isPresented: $isConfirmingDeletion) {
+            Button("Delete permanently", role: .destructive) {
+                Task { await deleteAccount() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                """
+                This deletes your sign-in, your squad profile and photo, and every \
+                RSVP you've made. Submissions still waiting on approval are deleted \
+                too. Events and stories already on the board stay up, with your name \
+                replaced by "Former member". This can't be undone.
+                """
+            )
+        }
+    }
+
+    private func deleteAccount() async {
+        guard let uid = session.uid else { return }
+        isDeleting = true
+        defer { isDeleting = false }
+
+        do {
+            // Firestore first: the rules match every deletion against the signed-in
+            // uid, and once the Auth user is gone there's no way back in to finish.
+            try await data.erasePersonalData(userId: uid, email: session.email)
+            try await session.deleteAccount()
+            toasts.success("Your account and your data are gone.")
+        } catch {
+            let message = (error as? LocalizedError)?.errorDescription
+                ?? "Couldn't delete your account. Try again."
+            toasts.error(message)
+        }
+
+        await data.refreshFeed(signedIn: session.isSignedIn)
     }
 }

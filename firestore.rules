@@ -58,16 +58,32 @@ service cloud.firestore {
         ]);
       allow update: if isAdmin()
         || ((isEventOwner() || isTaggedHost()) && hostEditableKeysOnly());
-      allow delete: if isAdmin();
+      // A submitter may withdraw an event that hasn't been approved yet — nobody
+      // else can see it, and account deletion has to be able to clear it. An
+      // approved event is on the board and stays admin-only to delete; the
+      // deletion flow anonymizes the host name through `allow update` instead.
+      allow delete: if isAdmin()
+        || (isEventOwner() && resource.data.approved == false);
     }
 
     match /memories/{memoryId} {
+      function isMemoryAuthor() {
+        return signedIn() && resource.data.get('createdBy', '') == request.auth.uid;
+      }
+
       allow read: if resource.data.approved == true || isAdmin()
         || (signedIn() && resource.data.createdBy == request.auth.uid);
       allow create: if signedIn()
         && request.resource.data.approved == false
         && request.resource.data.createdBy == request.auth.uid;
-      allow update, delete: if isAdmin();
+      // Authors get exactly one editable field, the byline, so account deletion
+      // can strip their name off a story that's already published. `approved`
+      // and `text` stay out of reach.
+      allow update: if isAdmin()
+        || (isMemoryAuthor()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['author']));
+      allow delete: if isAdmin()
+        || (isMemoryAuthor() && resource.data.approved == false);
     }
 
     match /squad/{memberId} {
@@ -110,7 +126,11 @@ service cloud.firestore {
           && (!('photoBase64' in request.resource.data)
               || request.resource.data.photoBase64.size() < 350000));
 
-      allow delete: if isAdmin();
+      // Your profile is yours to remove — it carries your name, email, photo and
+      // bio, so account deletion deletes it outright.
+      allow delete: if isAdmin()
+        || squadEmailMatches()
+        || (signedIn() && resource.data.userId == request.auth.uid);
     }
 
     match /rsvps/{rsvpId} {

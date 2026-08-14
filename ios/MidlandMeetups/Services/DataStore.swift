@@ -334,6 +334,91 @@ final class DataStore {
         return member
     }
 
+    // MARK: - Account deletion
+
+    /// The byline left on content whose author has deleted their account.
+    static let formerMemberName = "Former member"
+
+    /// Clears this account out of Firestore, ahead of deleting the Auth user.
+    ///
+    /// Personal records — the squad profile and every RSVP — go outright, as do
+    /// submissions still waiting on approval, which nobody else has ever seen.
+    /// Content already on the board stays, because other people's plans hang off
+    /// it, but the author comes off it: the byline becomes "Former member" and the
+    /// uid link is cleared. What remains is `createdBy`, a uid that no longer
+    /// resolves to an account.
+    ///
+    /// Must run while the ID token is still good — every deletion here is matched
+    /// against `request.auth.uid` in `firestore.rules`.
+    func erasePersonalData(userId: String, email: String?) async throws {
+        let client = try requireClient()
+
+        // `rsvps/{userId}_{eventId}` — deletable by the account that owns them.
+        let rsvpDocs = try await client.run(
+            FirestoreQuery("rsvps").whereEqualTo("userId", .string(userId))
+        )
+        for document in rsvpDocs {
+            try await client.delete("rsvps", document.id)
+        }
+
+        // The profile carries the name, email, photo, bio and social link.
+        if let profile = await findEditableSquadProfile(userId: userId, email: email) {
+            try await client.delete("squad", profile.id)
+        }
+
+        try await eraseAuthoredEvents(client: client, userId: userId)
+        try await eraseAuthoredMemories(client: client, userId: userId)
+
+        myEvents = []
+        myEventsUserId = nil
+    }
+
+    /// Submitted and hosted events, deduplicated the way `loadMyEvents` does it.
+    private func eraseAuthoredEvents(client: FirestoreClient, userId: String) async throws {
+        let submitted = FirestoreQuery("events").whereEqualTo("createdBy", .string(userId))
+        let hosting = FirestoreQuery("events").whereEqualTo("hostUserId", .string(userId))
+        async let submittedDocs = client.run(submitted)
+        async let hostingDocs = client.run(hosting)
+        let documents = try await submittedDocs + hostingDocs
+
+        var byId: [String: MeetupEvent] = [:]
+        for document in documents {
+            let event = MeetupEvent(document: document)
+            byId[event.id] = event
+        }
+
+        for event in byId.values {
+            if !event.approved, event.createdBy == userId {
+                try await client.delete("events", event.id)
+            } else if event.hostUserId == userId {
+                // Exactly the fields `hostEditableKeysOnly()` allows.
+                try await client.merge("events", event.id, fields: [
+                    "host": .string(Self.formerMemberName),
+                    "hostUserId": .string(""),
+                    "updatedAt": .timestamp(Date()),
+                ])
+            }
+            // Approved and hosted by someone else: nothing here identifies you.
+        }
+    }
+
+    private func eraseAuthoredMemories(client: FirestoreClient, userId: String) async throws {
+        let documents = try await client.run(
+            FirestoreQuery("memories").whereEqualTo("createdBy", .string(userId))
+        )
+        for document in documents {
+            let memory = Memory(document: document)
+            if memory.approved {
+                // The byline is the only field the author rule lets them write.
+                try await client.merge("memories", memory.id, fields: [
+                    "author": .string(Self.formerMemberName),
+                ])
+            } else {
+                try await client.delete("memories", memory.id)
+            }
+        }
+    }
+
     // MARK: - Admin
 
     func fetchAllForAdmin() async throws -> AdminSnapshot {

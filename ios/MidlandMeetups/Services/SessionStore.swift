@@ -118,6 +118,18 @@ final class SessionStore {
         clear()
     }
 
+    /// Deletes the Auth user and drops the local session. Call
+    /// `DataStore.erasePersonalData` first — once the account is gone there is no
+    /// way back in to finish the cleanup.
+    func deleteAccount() async throws {
+        guard let auth else { throw FirebaseError(message: "Firebase isn't configured.") }
+        guard let token = await validIdToken() else {
+            throw FirebaseError(message: "Your session expired. Sign in again to delete your account.")
+        }
+        try await auth.deleteAccount(idToken: token)
+        clear()
+    }
+
     /// Returns a token that is valid for at least another minute, refreshing if needed.
     /// Concurrent callers share one refresh instead of racing.
     func validIdToken() async -> String? {

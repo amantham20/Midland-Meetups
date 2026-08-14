@@ -55,6 +55,13 @@ struct AuthClient {
         return session
     }
 
+    /// Permanently deletes the Auth user. Identity Toolkit rejects a token minted
+    /// too long ago with `CREDENTIAL_TOO_OLD_LOGIN_AGAIN`, which surfaces as a
+    /// prompt to sign in again — refreshing the token is not enough.
+    func deleteAccount(idToken: String) async throws {
+        _ = try await post("\(identityBase):delete", body: ["idToken": idToken])
+    }
+
     // MARK: - Token lifecycle
 
     /// Exchanges a refresh token for a fresh ID token.
@@ -153,6 +160,11 @@ struct AuthClient {
             return FirebaseError(message: "That account has been disabled.", status: error.status)
         case "TOO_MANY_ATTEMPTS_TRY_LATER":
             return FirebaseError(message: "Too many attempts. Wait a bit and try again.", status: error.status)
+        case "CREDENTIAL_TOO_OLD_LOGIN_AGAIN":
+            return FirebaseError(
+                message: "For your security, sign out and sign back in, then delete your account.",
+                status: error.status
+            )
         case "TOKEN_EXPIRED", "INVALID_REFRESH_TOKEN", "USER_NOT_FOUND":
             return FirebaseError(message: "Your session expired. Sign in again.", status: error.status)
         default:
