@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertIcon, CheckIcon, TrashIcon } from "@/components/Icons";
+import { AlertIcon, CheckIcon, EyeOffIcon, TrashIcon } from "@/components/Icons";
 import {
   REPORT_TARGET_COLLECTION,
   REPORT_TARGET_LABEL,
@@ -26,7 +26,9 @@ function ReportCard({
   report,
   busy,
   targetExists,
+  targetPublished,
   onSetStatus,
+  onHideContent,
   onDeleteContent,
   onDeleteReport,
 }: {
@@ -34,11 +36,15 @@ function ReportCard({
   busy: boolean;
   /** False once the reported document is gone — deleted, or never a document. */
   targetExists: boolean;
+  /** True while the reported content is still on the board for members. */
+  targetPublished: boolean;
   onSetStatus: (status: "open" | "reviewed") => void;
+  onHideContent: () => void;
   onDeleteContent: () => void;
   onDeleteReport: () => void;
 }) {
   const open = report.status === "open";
+  const targetNoun = REPORT_TARGET_LABEL[report.targetType].toLowerCase();
   return (
     <article className="card flex flex-col gap-3 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -55,6 +61,9 @@ function ReportCard({
             )}
             {!targetExists && report.targetId && (
               <span className="badge badge-neutral">content already gone</span>
+            )}
+            {targetExists && !targetPublished && (
+              <span className="badge badge-red">hidden from everyone</span>
             )}
             <span>{formatFiled(report.createdAt)}</span>
           </div>
@@ -95,6 +104,17 @@ function ReportCard({
           <CheckIcon className="h-4 w-4" />
           {open ? "Mark reviewed" : "Reopen"}
         </button>
+        {targetExists && targetPublished && (
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={busy}
+            onClick={onHideContent}
+          >
+            <EyeOffIcon className="h-4 w-4" />
+            Hide the {targetNoun}
+          </button>
+        )}
         {targetExists && (
           <button
             type="button"
@@ -103,7 +123,7 @@ function ReportCard({
             onClick={onDeleteContent}
           >
             <TrashIcon className="h-4 w-4" />
-            Delete the {REPORT_TARGET_LABEL[report.targetType].toLowerCase()}
+            Delete the {targetNoun}
           </button>
         )}
         <button
@@ -126,17 +146,22 @@ function ReportCard({
 export function ReportsPanel({
   reports: loaded,
   busyId,
-  liveTargetIds,
+  targetPublished,
   onSetStatus,
+  onHideContent,
   onDeleteContent,
   onDeleteReport,
 }: {
   /** null when the collection couldn't be read — not the same as empty. */
   reports: Report[] | null;
   busyId: string | null;
-  /** Ids of every event, memory and profile still on file. */
-  liveTargetIds: Set<string>;
+  /**
+   * Every event, memory and profile still on file, mapped to whether it's
+   * currently on the board. A missing id means the content is gone for good.
+   */
+  targetPublished: Map<string, boolean>;
   onSetStatus: (id: string, status: "open" | "reviewed") => void;
+  onHideContent: (report: Report) => void;
   onDeleteContent: (report: Report) => void;
   onDeleteReport: (id: string) => void;
 }) {
@@ -196,9 +221,11 @@ export function ReportsPanel({
               busy={busyId === r.id}
               targetExists={
                 REPORT_TARGET_COLLECTION[r.targetType] !== null &&
-                liveTargetIds.has(r.targetId)
+                targetPublished.has(r.targetId)
               }
+              targetPublished={targetPublished.get(r.targetId) === true}
               onSetStatus={(status) => onSetStatus(r.id, status)}
+              onHideContent={() => onHideContent(r)}
               onDeleteContent={() => onDeleteContent(r)}
               onDeleteReport={() => onDeleteReport(r.id)}
             />

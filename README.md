@@ -23,8 +23,9 @@ Progressive Web App rewrite of the Midland Meetups bulletin board.
 | Tag a host | Pick a squad member instead of typing a name — they can then edit the event too |
 | Edit your own events | Submitter and tagged host edit from `/submit` or the event dialog; admins edit any event from `/admin` → Events |
 | Sign-in | Firebase Auth — Email/Password |
-| Report content or a user | Firestore `reports` — a Report action on every event, story and profile, plus `/report` (web) and More → Report (iOS) |
+| Report content or a user | Firestore `reports` — a Report action on every event and Lore story, plus `/report` (web) and More → Report (iOS) |
 | Admin queue | `/admin` — approve/reject + edit any event end to end, and work the report queue (bootstrap UID and/or admin claim) |
+| Hide or delete content | Organizers take an event, Lore story or profile off the board for every member (`approved: false` + `hidden: true`), or delete it outright — `/admin` → Events / Lore / Reports, and the same actions on iOS |
 | PWA install | Web App Manifest + service worker via next-pwa |
 | Event reminders | FCM tokens + Next.js `/api/cron/reminders` (Vercel Cron or any external cron) |
 | Admin claim | Next.js `/api/admin/claim` (optional; bootstrap UIDs already in rules) |
@@ -158,6 +159,7 @@ FCM still needs a VAPID key and users who enabled reminders in the app.
 | status | string | `confirmed` \| `rain-delay` \| `canceled` \| `relocated` |
 | statusNote | string | shown with status flags |
 | approved | boolean | public only when `true` |
+| hidden | boolean | `true` when an organizer took it down (always with `approved: false`) — see below |
 | createdBy | string | Auth UID — also who may edit the event |
 | reminderSent | boolean | set by cron after FCM send; cleared when a host moves the date/time |
 | updatedAt | timestamp | stamped on every edit |
@@ -168,13 +170,33 @@ own event — rules pin every other field, so a host can't self-approve one or
 take it over from the account that submitted it. Admins edit anything, on any
 event, from **Admin → Events**.
 
+### Hiding vs deleting
+
+Organizers have two ways to take something off the board, on `events`,
+`memories` and `squad` alike:
+
+- **Hide** writes `approved: false` + `hidden: true`. That's what removes it for
+  every member: the public feeds query `approved == true` and the read rule
+  enforces the same condition, so a hidden document isn't merely filtered in the
+  client — nobody outside the organizers and its own author can read it, in any
+  audience group, on web or iOS. Reversible from **Admin → Events / Lore /
+  Squad**, and the day-before reminder stops firing for a hidden event.
+- **Delete** removes the document. Not reversible; RSVPs for a deleted event are
+  left behind as orphans (rules only let each member delete their own).
+
+`hidden` exists purely to separate "an organizer pulled this" from "nobody has
+reviewed this yet" — without it, hiding would drop the item back into the review
+queue looking like a fresh submission. Nothing queries on it; it drives labels
+and filters only. Only admins can write it (`hostEditableKeysOnly()` leaves it
+out for events, and a memory's author may only touch `author`).
+
 ### `memories/{id}`
 
-`title`, `author`, `date`, `text`, `approved`, `createdBy`
+`title`, `author`, `date`, `text`, `approved`, `hidden`, `createdBy`
 
 ### `squad/{id}`
 
-`name`, `occupation`, `age`, `gender`, `socialLink`, `bio`, `photoBase64`, `photoMimeType`, `photoUrl` (legacy/empty), `approved`, `createdBy`
+`name`, `occupation`, `age`, `gender`, `socialLink`, `bio`, `photoBase64`, `photoMimeType`, `photoUrl` (legacy/empty), `approved`, `hidden`, `createdBy`
 
 Photos are **not** in Cloud Storage. The browser compresses to ~320px JPEG and stores base64 on the document. Client caches (memory + `sessionStorage` + Firestore persistent cache) avoid rebuilding/re-fetching on every visit.
 
@@ -200,8 +222,10 @@ Photos are **not** in Cloud Storage. The browser compresses to ~320px JPEG and s
 
 Write-only for members: reporting needs an account so the collection isn't an
 open write endpoint, and **only admins can read** — a reporter can't read back
-even their own report. Admins mark a report reviewed, delete what it points at,
-or dismiss it. The published fallback is the address in the Terms.
+even their own report. Admins mark a report reviewed, hide or delete what it
+points at, or dismiss it; hiding is the usual first move, since it takes the
+content off the board for everyone while leaving the evidence in place. The
+published fallback is the address in the Terms.
 
 ### `fcmTokens/{token}`
 
@@ -292,8 +316,8 @@ xcodebuild -project ios/MidlandMeetups.xcodeproj -scheme MidlandMeetups -destina
 | `/squad` | Squad tab — member grid, join/edit your profile with a photo picker |
 | `/submit` | More → Submit an Event, your own submissions with Edit, and the **+** on Happenings |
 | `/login` | More → Sign in (Identity Toolkit REST; session in the keychain) |
-| `/admin` | More → Admin queue — approvals, full edit on any event, audience groups, reports |
-| `/report` | More → Report content or a user, plus a Report action on every event, story and profile |
+| `/admin` | More → Admin queue — approvals, full edit on any event, hide/delete on events and Lore stories, audience groups, reports |
+| `/report` | More → Report content or a user, plus a Report action on every event and Lore story |
 | Game link | More → Game (opens in the browser) |
 
 Native additions: **Add to Calendar** writes straight into the user's calendar via

@@ -34,6 +34,13 @@ export interface MeetupEvent {
   status: EventStatus;
   statusNote: string;
   approved: boolean;
+  /**
+   * Taken down by an organizer. Always paired with `approved: false`, which is
+   * what actually removes it for every member — this flag only records *why*,
+   * so the review queue doesn't offer a pulled event back up as a new
+   * submission. See `setContentPublished`.
+   */
+  hidden?: boolean;
   /** Audience group slugs. Empty/undefined = everyone. */
   tags: string[];
   createdBy?: string;
@@ -54,6 +61,8 @@ export interface Memory {
   date: string;
   text: string;
   approved: boolean;
+  /** Taken down by an organizer — see `MeetupEvent.hidden`. */
+  hidden?: boolean;
   createdBy?: string;
   createdAt?: string;
 }
@@ -79,6 +88,8 @@ export interface SquadMember {
   /** Optional external URL (legacy); base64 takes precedence when present. */
   photoUrl: string;
   approved: boolean;
+  /** Taken down by an organizer — see `MeetupEvent.hidden`. */
+  hidden?: boolean;
   /** @deprecated Prefer userId — kept for older docs */
   createdBy?: string;
   createdAt?: string;

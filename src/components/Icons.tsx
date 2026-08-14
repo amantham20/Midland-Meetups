@@ -38,6 +38,14 @@ export const TrashIcon = ({ className }: IconProps) => (
   </Glyph>
 );
 
+export const EyeOffIcon = ({ className }: IconProps) => (
+  <Glyph className={className}>
+    <path d="M10.6 6.2A9.4 9.4 0 0 1 12 6c5 0 9 6 9 6a15.6 15.6 0 0 1-2.8 3.3M6.6 6.8A15.4 15.4 0 0 0 3 12s4 6 9 6a9.3 9.3 0 0 0 4.2-1" />
+    <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+    <path d="M4 4l16 16" />
+  </Glyph>
+);
+
 export const PlusIcon = ({ className }: IconProps) => (
   <Glyph className={className}>
     <path d="M12 5v14M5 12h14" />

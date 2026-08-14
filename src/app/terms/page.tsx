@@ -150,8 +150,9 @@ export default function TermsPage() {
         </p>
         <p>
           You may also report content, or the account behind it, from inside the
-          Application. Every event, story and member profile carries a{" "}
-          <strong>Report</strong> action, and the same form is reachable at{" "}
+          Application. Every event and story carries a <strong>Report</strong>{" "}
+          action, and the same form — which also covers members and member
+          profiles — is reachable at{" "}
           <LegalLink href="/report">Report content or a user</LegalLink> on the web
           and under <strong>More &rarr; Report content or a user</strong> in the iOS
           app. Reports go to the organizers, who can hide or delete the content and

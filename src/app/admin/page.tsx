@@ -19,16 +19,18 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import {
   approveDocument,
+  deleteDocument,
   deleteGroup,
   deleteReport,
   fetchAllForAdmin,
   isAdminClaimEndpointConfigured,
   linkUserIdsForSquadEmails,
-  rejectDocument,
   requestAdminClaim,
   saveGroup,
+  setContentPublished,
   setReportStatus,
   adminUpdateSquadMember,
+  type ModeratedCollection,
 } from "@/lib/firebase/data";
 import { normalizeEmail } from "@/lib/audience";
 import {
@@ -43,10 +45,11 @@ import { ReviewPanel } from "./ReviewPanel";
 import { SquadPanel, draftFromMember, type SquadDraft } from "./SquadPanel";
 import { GroupsPanel } from "./GroupsPanel";
 import { EventsPanel } from "./EventsPanel";
+import { LorePanel } from "./LorePanel";
 import { ReportsPanel } from "./ReportsPanel";
 import { StatTile } from "./ui";
 
-type Tab = "review" | "reports" | "squad" | "groups" | "events";
+type Tab = "review" | "reports" | "squad" | "groups" | "events" | "lore";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "review", label: "Review" },
@@ -54,6 +57,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "squad", label: "Squad" },
   { id: "groups", label: "Groups" },
   { id: "events", label: "Events" },
+  { id: "lore", label: "Lore" },
 ];
 
 /** Firestore rejected the read/write outright — not a network or index problem. */
@@ -170,23 +174,34 @@ export default function AdminPage() {
     };
   }, [isAdmin, hasAdminClaim]);
 
+  // Something an organizer took down is not waiting on a decision — it already
+  // got one. Keeping hidden content out of the review queue is what stops it
+  // reading like a fresh submission that another organizer should approve.
   const pendingEvents = useMemo(
-    () => events.filter((e) => !e.approved),
+    () => events.filter((e) => !e.approved && !e.hidden),
     [events],
   );
   const pendingMemories = useMemo(
-    () => memories.filter((m) => !m.approved),
+    () => memories.filter((m) => !m.approved && !m.hidden),
     [memories],
   );
-  const pendingSquad = useMemo(() => squad.filter((s) => !s.approved), [squad]);
+  const pendingSquad = useMemo(
+    () => squad.filter((s) => !s.approved && !s.hidden),
+    [squad],
+  );
   const approvedEvents = useMemo(
     () => events.filter((e) => e.approved),
     [events],
   );
-  /** Every event, pending included — the Events tab edits all of them. */
+  /** Every event, pending and hidden included — the Events tab edits all of them. */
   const eventsByDate = useMemo(
     () => [...events].sort((a, b) => a.date.localeCompare(b.date)),
     [events],
+  );
+  /** Every story, newest first — the Lore tab publishes, hides and deletes. */
+  const memoriesByDate = useMemo(
+    () => [...memories].sort((a, b) => b.date.localeCompare(a.date)),
+    [memories],
   );
   const pendingTotal =
     pendingEvents.length + pendingMemories.length + pendingSquad.length;
@@ -195,16 +210,17 @@ export default function AdminPage() {
     [reports],
   );
   /**
-   * Every document a report can point at. A report keeps working after its
-   * target is deleted — this is what tells the panel to stop offering to
-   * delete something that's already gone.
+   * Every document a report can point at, mapped to whether it's still on the
+   * board. A report keeps working after its target is deleted — a missing id is
+   * what tells the panel to stop offering to remove something that's already
+   * gone, and a `false` marks content that's been hidden but not deleted.
    */
-  const liveTargetIds = useMemo(
+  const targetPublished = useMemo(
     () =>
-      new Set([
-        ...events.map((e) => e.id),
-        ...memories.map((m) => m.id),
-        ...squad.map((s) => s.id),
+      new Map<string, boolean>([
+        ...events.map((e) => [e.id, e.approved] as const),
+        ...memories.map((m) => [m.id, m.approved] as const),
+        ...squad.map((s) => [s.id, s.approved] as const),
       ]),
     [events, memories, squad],
   );
@@ -254,20 +270,83 @@ export default function AdminPage() {
     }
   }
 
-  async function reject(
-    collectionName: "events" | "memories" | "squad",
-    id: string,
-  ) {
+  async function reject(collectionName: ModeratedCollection, id: string) {
     if (!window.confirm("Reject and delete this submission?")) return;
     setBusyId(id);
     try {
-      await rejectDocument(collectionName, id);
+      await deleteDocument(collectionName, id);
       await load();
       toast.success("Rejected and removed.");
     } catch (err) {
       console.error(err);
       if (isPermissionDenied(err)) setAccessDenied(true);
       const msg = "Reject failed. Check admin access and Firestore rules.";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  /**
+   * Take something off the board for every member, or put it back. Hiding is
+   * the reversible half of moderation — the document stays, so a mistake costs
+   * one click and an open report keeps its evidence.
+   */
+  async function setPublished(
+    collectionName: ModeratedCollection,
+    id: string,
+    published: boolean,
+    label: string,
+  ) {
+    if (
+      !published &&
+      !window.confirm(
+        `Hide “${label}”? It disappears for every member until you publish it again.`,
+      )
+    )
+      return;
+    setBusyId(id);
+    try {
+      await setContentPublished(collectionName, id, published);
+      await load();
+      toast.success(
+        published ? "Published — it's back on the board." : "Hidden from everyone.",
+      );
+    } catch (err) {
+      console.error(err);
+      if (isPermissionDenied(err)) setAccessDenied(true);
+      const msg = published
+        ? "Couldn't publish that."
+        : "Couldn't hide that. Check admin access and Firestore rules.";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  /** Delete a document for good, from the Events or Lore tab. */
+  async function removeContent(
+    collectionName: ModeratedCollection,
+    id: string,
+    label: string,
+  ) {
+    if (
+      !window.confirm(
+        `Delete “${label}”? This can't be undone — hide it instead if you might want it back.`,
+      )
+    )
+      return;
+    setBusyId(id);
+    try {
+      await deleteDocument(collectionName, id);
+      await load();
+      toast.success("Deleted.");
+    } catch (err) {
+      console.error(err);
+      if (isPermissionDenied(err)) setAccessDenied(true);
+      const msg = "Delete failed. Check admin access and Firestore rules.";
       setError(msg);
       toast.error(msg);
     } finally {
@@ -290,19 +369,48 @@ export default function AdminPage() {
     }
   }
 
+  /**
+   * Hide what a report points at, then close the report out. The usual first
+   * move on a report: the content is off the board for everyone immediately,
+   * and it's still there to look at if the reporter or its author follows up.
+   */
+  async function hideReportedContent(report: Report) {
+    const collectionName = REPORT_TARGET_COLLECTION[report.targetType];
+    if (!collectionName) return;
+    if (
+      !window.confirm(
+        `Hide “${report.targetLabel || "this content"}” from every member? You can publish it again later.`,
+      )
+    )
+      return;
+    setBusyId(report.id);
+    try {
+      await setContentPublished(collectionName, report.targetId, false);
+      await setReportStatus(report.id, "reviewed");
+      await load();
+      toast.success("Hidden from everyone and the report marked reviewed.");
+    } catch (err) {
+      console.error(err);
+      if (isPermissionDenied(err)) setAccessDenied(true);
+      toast.error("Couldn't hide that content.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   /** Delete what a report points at, then close the report out. */
   async function removeReportedContent(report: Report) {
     const collectionName = REPORT_TARGET_COLLECTION[report.targetType];
     if (!collectionName) return;
     if (
       !window.confirm(
-        `Delete “${report.targetLabel || "this content"}”? This can't be undone.`,
+        `Delete “${report.targetLabel || "this content"}”? This can't be undone — hide it instead if you might want it back.`,
       )
     )
       return;
     setBusyId(report.id);
     try {
-      await rejectDocument(collectionName, report.targetId);
+      await deleteDocument(collectionName, report.targetId);
       await setReportStatus(report.id, "reviewed");
       await load();
       toast.success("Content deleted and the report marked reviewed.");
@@ -350,10 +458,9 @@ export default function AdminPage() {
   async function setMemberApproved(member: SquadMember, approved: boolean) {
     setBusyId(member.id);
     try {
-      await adminUpdateSquadMember(member.id, {
-        ...draftFromMember(member),
-        approved,
-      });
+      // Only the two visibility fields — no need to rewrite the profile (and
+      // re-resolve its uid) just to take it off the board.
+      await setContentPublished("squad", member.id, approved);
       await load();
       toast.success(approved ? "Profile published." : "Profile hidden.");
     } catch (err) {
@@ -643,7 +750,9 @@ export default function AdminPage() {
                     ? squad.length
                     : t.id === "groups"
                       ? groups.length
-                      : events.length;
+                      : t.id === "lore"
+                        ? memories.length
+                        : events.length;
             return (
               <button
                 key={t.id}
@@ -704,8 +813,9 @@ export default function AdminPage() {
             <ReportsPanel
               reports={reports}
               busyId={busyId}
-              liveTargetIds={liveTargetIds}
+              targetPublished={targetPublished}
               onSetStatus={(id, status) => void markReport(id, status)}
+              onHideContent={(report) => void hideReportedContent(report)}
               onDeleteContent={(report) => void removeReportedContent(report)}
               onDeleteReport={(id) => void dismissReport(id)}
             />
@@ -734,7 +844,26 @@ export default function AdminPage() {
             <EventsPanel
               events={eventsByDate}
               groups={groups}
+              busyId={busyId}
               onSaved={() => void load()}
+              onSetPublished={(event, published) =>
+                void setPublished("events", event.id, published, event.title)
+              }
+              onDelete={(event) =>
+                void removeContent("events", event.id, event.title)
+              }
+            />
+          )}
+          {tab === "lore" && (
+            <LorePanel
+              memories={memoriesByDate}
+              busyId={busyId}
+              onSetPublished={(memory, published) =>
+                void setPublished("memories", memory.id, published, memory.title)
+              }
+              onDelete={(memory) =>
+                void removeContent("memories", memory.id, memory.title)
+              }
             />
           )}
         </>

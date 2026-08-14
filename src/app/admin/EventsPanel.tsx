@@ -4,13 +4,19 @@ import { useMemo, useState } from "react";
 import { EventEditModal } from "@/components/EventEditModal";
 import { StatusPill } from "@/components/StatusPill";
 import { TagChips } from "@/components/TagChips";
-import { Icons, PencilIcon, SearchIcon, UsersIcon } from "@/components/Icons";
+import {
+  Icons,
+  PencilIcon,
+  SearchIcon,
+  TrashIcon,
+  UsersIcon,
+} from "@/components/Icons";
 import { groupNameMap } from "@/lib/audience";
 import type { AudienceGroup, MeetupEvent } from "@/lib/types";
 import { todayIso } from "@/lib/utils";
 import { EmptyState, FilterChips, SectionHeading } from "./ui";
 
-type Filter = "upcoming" | "past" | "pending" | "all";
+type Filter = "upcoming" | "past" | "pending" | "hidden" | "all";
 
 /** Month/day for the little calendar tile on each row. */
 function dateTile(iso: string): { month: string; day: string } {
@@ -25,13 +31,19 @@ function dateTile(iso: string): { month: string; day: string } {
 export function EventsPanel({
   events,
   groups,
+  busyId,
   onSaved,
+  onSetPublished,
+  onDelete,
 }: {
   /** Every event, approved or not — admins can edit any of them. */
   events: MeetupEvent[];
   groups: AudienceGroup[];
+  busyId: string | null;
   /** Reload admin data after an edit lands. */
   onSaved: () => void;
+  onSetPublished: (event: MeetupEvent, published: boolean) => void;
+  onDelete: (event: MeetupEvent) => void;
 }) {
   const [filter, setFilter] = useState<Filter>("upcoming");
   const [query, setQuery] = useState("");
@@ -45,7 +57,8 @@ export function EventsPanel({
       all: events.length,
       upcoming: events.filter((e) => e.date >= today).length,
       past: events.filter((e) => e.date < today).length,
-      pending: events.filter((e) => !e.approved).length,
+      pending: events.filter((e) => !e.approved && !e.hidden).length,
+      hidden: events.filter((e) => !e.approved && e.hidden).length,
     }),
     [events, today],
   );
@@ -56,7 +69,8 @@ export function EventsPanel({
       .filter((e) => {
         if (filter === "upcoming" && e.date < today) return false;
         if (filter === "past" && e.date >= today) return false;
-        if (filter === "pending" && e.approved) return false;
+        if (filter === "pending" && (e.approved || e.hidden)) return false;
+        if (filter === "hidden" && !(!e.approved && e.hidden)) return false;
         if (!q) return true;
         return [e.title, e.location, e.host]
           .filter(Boolean)
@@ -74,7 +88,7 @@ export function EventsPanel({
       <SectionHeading
         title="All events"
         count={events.length}
-        hint="Edit any event end to end — details, status note for the Happenings ticker, and which audience groups can see it."
+        hint="Edit any event end to end — details, status note for the Happenings ticker, and which audience groups can see it. Hide takes it off the board for every member at once; delete removes it for good."
       />
 
       <div className="mb-5 flex flex-wrap items-center gap-3">
@@ -96,6 +110,7 @@ export function EventsPanel({
             { value: "upcoming", label: "Upcoming", count: counts.upcoming },
             { value: "past", label: "Past", count: counts.past },
             { value: "pending", label: "Pending", count: counts.pending },
+            { value: "hidden", label: "Hidden", count: counts.hidden },
             { value: "all", label: "All", count: counts.all },
           ]}
         />
@@ -137,9 +152,16 @@ export function EventsPanel({
                     {e.title}
                   </h3>
                   <StatusPill status={e.status} />
-                  {!e.approved && (
-                    <span className="badge badge-amber">Awaiting approval</span>
-                  )}
+                  {!e.approved &&
+                    (e.hidden ? (
+                      <span className="badge badge-red">
+                        Hidden from everyone
+                      </span>
+                    ) : (
+                      <span className="badge badge-amber">
+                        Awaiting approval
+                      </span>
+                    ))}
                 </div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
                   <span className="inline-flex items-center gap-1.5">
@@ -166,14 +188,37 @@ export function EventsPanel({
                 </div>
               </div>
 
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => setEditingId(e.id)}
-              >
-                <PencilIcon className="h-4 w-4" />
-                Edit
-              </button>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setEditingId(e.id)}
+                >
+                  <PencilIcon className="h-4 w-4" />
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  disabled={busyId === e.id}
+                  onClick={() => onSetPublished(e, !e.approved)}
+                >
+                  {busyId === e.id
+                    ? "Saving…"
+                    : e.approved
+                      ? "Hide from everyone"
+                      : "Publish"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  disabled={busyId === e.id}
+                  onClick={() => onDelete(e)}
+                >
+                  <TrashIcon className="h-4 w-4" />
+                  Delete
+                </button>
+              </div>
             </article>
           ))}
         </div>

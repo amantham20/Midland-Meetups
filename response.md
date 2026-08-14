@@ -91,13 +91,14 @@ Posting anything requires a signed-in account. Every submission — event, story
 profile — is written with approved=false and stays hidden from all other users until
 an organizer approves it in the in-app Admin queue. This is enforced server-side by
 Cloud Firestore Security Rules, not only in the UI: no client can create pre-approved
-content or approve its own submission. Organizers can delete any content in the app.
-Reporting is in the app: every event, story and member profile has a Report action,
-and More > Report content or a user covers anything else. A report takes a reason and
-optional details, goes only to the organizers, and appears in More > Admin queue >
-Reports, where an organizer marks it reviewed, deletes what it points at, or
-dismisses it. Reports can also be sent by email to hey@amantham.com, which is
-published in the Terms of Use.
+content or approve its own submission. Organizers can hide or delete any content in
+the app. Reporting is in the app: every event and story has a Report action, and
+More > Report content or a user covers anything else, including reporting a member or
+the person behind a profile. A report takes a reason and optional details, goes only
+to the organizers, and appears in More > Admin queue > Reports, where an organizer
+marks it reviewed, hides what it points at from every user, deletes it, or dismisses
+the report. Reports can also be sent by email to hey@amantham.com, which is published
+in the Terms of Use.
 Terms of Use, including the content guidelines: <SITE URL>/terms
 Privacy Policy: <SITE URL>/privacy
 
@@ -188,10 +189,11 @@ photo, every RSVP, and every unapproved submission. Published content stays, byl
 UGC AND MODERATION. Posting requires an account. Every submission — event, story,
 profile — is written with approved=false and stays hidden from all other users until
 an organizer approves it; Security Rules enforce this server-side, so no
-client can create pre-approved content or approve its own. Every event, story and
-profile carries a Report action; More > Report content or a user covers anything
-else. Reports reach organizers only, who work them in More > Admin queue > Reports:
-mark reviewed, delete the content, or dismiss. By email: hey@amantham.com.
+client can create pre-approved content or approve its own. Every event and story
+carries a Report action; More > Report content or a user covers anything else,
+including a member or the person behind a profile. Reports reach organizers only, who
+work them in More > Admin queue > Reports: mark reviewed, hide the content from every
+user, delete it, or dismiss. By email: hey@amantham.com.
 Terms: <SITE URL>/terms. Privacy: <SITE URL>/privacy.
 
 5) EXTERNAL SERVICES. Firebase Authentication (Google), the only auth service, for

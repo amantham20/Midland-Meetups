@@ -9,8 +9,9 @@ import { useAuth } from "@/contexts/AuthContext";
 
 /**
  * The one address that always works for a report, whatever page the content was
- * on: linked from the footer, and the web twin of More → Report on iOS. Each
- * event, story and profile also carries its own Report action.
+ * on: linked from the footer, and the web twin of More → Report on iOS. Events
+ * and Lore stories also carry their own Report action; a squad profile — and
+ * the person behind it — is reported from here.
  */
 export default function ReportPage() {
   const { user } = useAuth();
@@ -27,8 +28,8 @@ export default function ReportPage() {
       <div className="form-card max-w-2xl space-y-4">
         <p className="text-muted">
           Reports go to the organizers only. They can hide or delete the content
-          and take action on the account behind it. Every event, story and profile
-          also has its own <strong className="text-ink">Report</strong> action —
+          and take action on the account behind it. Events and Lore stories also
+          carry their own <strong className="text-ink">Report</strong> action —
           using that one attaches the report to the exact item.
         </p>
 

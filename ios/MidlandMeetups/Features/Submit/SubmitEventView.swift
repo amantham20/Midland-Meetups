@@ -307,12 +307,14 @@ private struct MyEventsSection: View {
             }
 
             if !event.approved {
-                Text("Awaiting approval")
+                Text(event.hidden ? "Removed by organizers" : "Awaiting approval")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.amberInk)
+                    .foregroundStyle(event.hidden ? Theme.red : Theme.amberInk)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
-                    .background(Theme.yellow.opacity(0.22))
+                    .background(
+                        event.hidden ? Theme.red.opacity(0.14) : Theme.yellow.opacity(0.22)
+                    )
                     .clipShape(Capsule())
             }
 
