@@ -93,6 +93,11 @@ struct EventDetailView: View {
             }
 
             rsvpCard
+
+            HStack {
+                Spacer(minLength: 0)
+                ReportButton(target: .event(event), label: "Report this event")
+            }
         }
         .navigationTitle(event.title)
         .navigationBarTitleDisplayMode(.inline)

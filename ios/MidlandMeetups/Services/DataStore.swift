@@ -236,6 +236,64 @@ final class DataStore {
         await loadRsvps()
     }
 
+    // MARK: - Reports
+
+    /// Files a report against a piece of content or a member.
+    ///
+    /// Signed-in only: the rules stamp the report with `request.auth.uid`, which
+    /// is what stops the collection being an open write endpoint. Whoever can't
+    /// sign in gets the email route the Terms publish instead.
+    func submitReport(
+        target: ReportTarget,
+        reason: ReportReason,
+        details: String,
+        userId: String,
+        reporterEmail: String?,
+        reporterName: String
+    ) async throws {
+        let client = try requireClient()
+        try await client.create(in: "reports", fields: [
+            "targetType": .string(target.type.rawValue),
+            "targetId": .string(target.id),
+            "targetLabel": .string(String(target.label.prefix(200))),
+            "reason": .string(reason.rawValue),
+            "details": .string(
+                String(
+                    details.trimmingCharacters(in: .whitespacesAndNewlines).prefix(2000)
+                )
+            ),
+            "reportedBy": .string(userId),
+            "reporterEmail": .string(Audience.normalizeEmail(reporterEmail)),
+            "reporterName": .string(reporterName.trimmingCharacters(in: .whitespaces)),
+            "status": .string(ReportStatus.open.rawValue),
+            "createdAt": .timestamp(Date()),
+        ])
+    }
+
+    func setReportStatus(id: String, status: ReportStatus) async throws {
+        let client = try requireClient()
+        try await client.merge("reports", id, fields: [
+            "status": .string(status.rawValue),
+            "updatedAt": .timestamp(Date()),
+        ])
+    }
+
+    /// Clears a report out of the queue once it's been dealt with.
+    func deleteReport(id: String) async throws {
+        let client = try requireClient()
+        try await client.delete("reports", id)
+    }
+
+    /// Deletes what a report points at, then closes the report out.
+    func deleteReportedContent(_ report: ContentReport) async throws {
+        let client = try requireClient()
+        guard let collection = report.targetType.collection, !report.targetId.isEmpty else {
+            throw FirebaseError(message: "That report isn't attached to anything to delete.")
+        }
+        try await client.delete(collection, report.targetId)
+        try await setReportStatus(id: report.id, status: .reviewed)
+    }
+
     // MARK: - Squad profile
 
     func submitSquadMember(
@@ -427,6 +485,11 @@ final class DataStore {
         async let memories = client.list("memories")
         async let squad = client.list("squad")
         async let groups = client.list("groups")
+        // Deployments whose rules predate the reports collection must still get
+        // their queue: an unreadable read lands as nil, which the view calls out
+        // rather than passing off as an empty queue.
+        async let reports = try? client.list("reports")
+        let reportDocs = await reports
 
         return try await AdminSnapshot(
             events: events.map(MeetupEvent.init(document:))
@@ -436,7 +499,10 @@ final class DataStore {
             squad: squad.map(SquadMember.init(document:))
                 .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending },
             groups: groups.map(AudienceGroup.init(document:))
-                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending },
+            reports: reportDocs?
+                .map(ContentReport.init(document:))
+                .sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
         )
     }
 
@@ -551,4 +617,7 @@ struct AdminSnapshot {
     var memories: [Memory] = []
     var squad: [SquadMember] = []
     var groups: [AudienceGroup] = []
+    /// nil when the reports collection couldn't be read — usually rules that
+    /// haven't been deployed yet. Not the same as "no reports".
+    var reports: [ContentReport]?
 }

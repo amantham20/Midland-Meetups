@@ -157,5 +157,25 @@ service cloud.firestore {
       allow read: if signedIn();
       allow create, update, delete: if isAdmin();
     }
+
+    // Reports of objectionable content or accounts, filed from the app.
+    //
+    // Write-only for members: a report carries the name of whoever filed it, so
+    // the queue is organizers-only — a reporter can't read back even their own.
+    // `status` is pinned to 'open' on create so nobody files a pre-resolved
+    // report, and only an organizer can move it or clear it out.
+    match /reports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if signedIn()
+        && request.resource.data.reportedBy == request.auth.uid
+        && request.resource.data.status == 'open'
+        && request.resource.data.targetType in ['event', 'memory', 'member', 'other']
+        && request.resource.data.targetId is string
+        && request.resource.data.targetLabel is string
+        && request.resource.data.reason is string
+        && request.resource.data.details is string
+        && request.resource.data.details.size() <= 2000;
+      allow update, delete: if isAdmin();
+    }
   }
 }

@@ -14,6 +14,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { EventEditModal } from "./EventEditModal";
 import { Icons, PencilIcon } from "./Icons";
+import { ReportDialog } from "./ReportDialog";
 import { StatusPill } from "./StatusPill";
 
 function EventModalBody({
@@ -37,6 +38,7 @@ function EventModalBody({
   const [statusMsg, setStatusMsg] = useState("");
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [reporting, setReporting] = useState(false);
 
   // Whoever submitted it and whoever is tagged as host can fix their own
   // event; admins can fix any.
@@ -49,9 +51,9 @@ function EventModalBody({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // While the edit dialog is up it owns Escape — closing both at once
+      // While a nested dialog is up it owns Escape — closing both at once
       // would throw away the draft and the event the user was reading.
-      if (e.key === "Escape" && !editing) onClose();
+      if (e.key === "Escape" && !editing && !reporting) onClose();
     };
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
@@ -59,7 +61,7 @@ function EventModalBody({
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
     };
-  }, [onClose, editing]);
+  }, [onClose, editing, reporting]);
 
   const going = rsvps.filter((r) => r.eventId === event.id && r.status === "going").length;
   const notGoing = rsvps.filter(
@@ -177,6 +179,13 @@ function EventModalBody({
               Edit event
             </button>
           )}
+          <button
+            type="button"
+            className="ml-auto text-sm font-semibold text-muted hover:text-red-ink"
+            onClick={() => setReporting(true)}
+          >
+            Report
+          </button>
         </div>
 
         <div className="rounded-lg border border-border bg-surface-2/50 p-4">
@@ -241,6 +250,12 @@ function EventModalBody({
           onClose={() => setEditing(false)}
         />
       )}
+
+      <ReportDialog
+        open={reporting}
+        onClose={() => setReporting(false)}
+        target={{ type: "event", id: event.id, label: event.title }}
+      />
     </div>
   );
 }

@@ -149,10 +149,16 @@ export default function TermsPage() {
           is required.
         </p>
         <p>
-          Where the Application provides such features, you may also report content,
-          block other users, or mute notifications directly through the
-          Application&apos;s interface. The Service Provider will review in-app
-          reports with the same standards described in these Terms.
+          You may also report content, or the account behind it, from inside the
+          Application. Every event, story and member profile carries a{" "}
+          <strong>Report</strong> action, and the same form is reachable at{" "}
+          <LegalLink href="/report">Report content or a user</LegalLink> on the web
+          and under <strong>More &rarr; Report content or a user</strong> in the iOS
+          app. Reports go to the organizers, who can hide or delete the content and
+          act on the account. Where the Application provides them, other controls
+          such as blocking or muting are likewise available through its interface.
+          The Service Provider will review in-app reports with the same standards
+          described in these Terms.
         </p>
         <p>
           The Service Provider may review reported content, request additional

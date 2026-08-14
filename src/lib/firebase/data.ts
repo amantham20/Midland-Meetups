@@ -20,6 +20,9 @@ import type {
   AudienceGroup,
   MeetupEvent,
   Memory,
+  Report,
+  ReportStatus,
+  ReportTargetType,
   Rsvp,
   RsvpStatus,
   SquadMember,
@@ -101,6 +104,28 @@ function mapGroup(id: string, data: Record<string, unknown>): AudienceGroup {
     emails: emailsRaw
       .map((e) => normalizeEmail(String(e)))
       .filter((e) => e.includes("@")),
+  };
+}
+
+function mapReport(id: string, data: Record<string, unknown>): Report {
+  return {
+    id,
+    targetType: (data.targetType as ReportTargetType) || "other",
+    targetId: String(data.targetId ?? ""),
+    targetLabel: String(data.targetLabel ?? ""),
+    reason: String(data.reason ?? ""),
+    details: String(data.details ?? ""),
+    reportedBy: String(data.reportedBy ?? ""),
+    reporterEmail: String(data.reporterEmail ?? ""),
+    reporterName: String(data.reporterName ?? ""),
+    status: data.status === "reviewed" ? "reviewed" : "open",
+    // ISO rather than the locale string the other mappers keep, so the queue can
+    // sort on it lexicographically.
+    createdAt: data.createdAt
+      ? ((data.createdAt as { toDate?: () => Date })
+          .toDate?.()
+          ?.toISOString() ?? String(data.createdAt))
+      : "",
   };
 }
 
@@ -372,6 +397,52 @@ export async function rejectDocument(
   id: string,
 ): Promise<void> {
   await deleteDoc(doc(getClientDb(), collectionName, id));
+}
+
+/**
+ * File a report against a piece of content or a member.
+ *
+ * Signed-in only: the rules stamp the report with `request.auth.uid`, which is
+ * what stops the collection being an open write endpoint. Signed-out visitors
+ * get the email route the Terms publish instead.
+ */
+export async function submitReport(input: {
+  targetType: ReportTargetType;
+  targetId?: string;
+  targetLabel?: string;
+  reason: string;
+  details: string;
+  userId: string;
+  reporterEmail?: string | null;
+  reporterName?: string;
+}): Promise<void> {
+  await addDoc(collection(getClientDb(), "reports"), {
+    targetType: input.targetType,
+    targetId: input.targetId || "",
+    targetLabel: (input.targetLabel || "").slice(0, 200),
+    reason: input.reason,
+    details: input.details.trim().slice(0, 2000),
+    reportedBy: input.userId,
+    reporterEmail: normalizeEmail(input.reporterEmail || ""),
+    reporterName: (input.reporterName || "").trim(),
+    status: "open",
+    createdAt: serverTimestamp(),
+  });
+}
+
+export async function setReportStatus(
+  id: string,
+  status: ReportStatus,
+): Promise<void> {
+  await updateDoc(doc(getClientDb(), "reports", id), {
+    status,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/** Clear a report out of the queue once it's been dealt with (admin only). */
+export async function deleteReport(id: string): Promise<void> {
+  await deleteDoc(doc(getClientDb(), "reports", id));
 }
 
 export type EventDetailFields = {
@@ -671,13 +742,22 @@ export async function fetchAllForAdmin(): Promise<{
   memories: Memory[];
   squad: SquadMember[];
   groups: AudienceGroup[];
+  /** null when the reports collection can't be read — not the same as empty. */
+  reports: Report[] | null;
 }> {
-  const [eventsSnap, memoriesSnap, squadSnap, groupsSnap] = await Promise.all([
-    getDocs(collection(getClientDb(), "events")),
-    getDocs(collection(getClientDb(), "memories")),
-    getDocs(collection(getClientDb(), "squad")),
-    getDocs(collection(getClientDb(), "groups")),
-  ]);
+  const [eventsSnap, memoriesSnap, squadSnap, groupsSnap, reportsSnap] =
+    await Promise.all([
+      getDocs(collection(getClientDb(), "events")),
+      getDocs(collection(getClientDb(), "memories")),
+      getDocs(collection(getClientDb(), "squad")),
+      getDocs(collection(getClientDb(), "groups")),
+      // Deployments whose rules predate the reports collection must still get
+      // their queue, so this one read is allowed to come back empty-handed.
+      getDocs(collection(getClientDb(), "reports")).catch((err) => {
+        console.warn("Could not read reports", err);
+        return null;
+      }),
+    ]);
   return {
     events: eventsSnap.docs.map((d) => mapEvent(d.id, d.data())),
     memories: memoriesSnap.docs.map((d) => mapMemory(d.id, d.data())),
@@ -685,6 +765,10 @@ export async function fetchAllForAdmin(): Promise<{
     groups: groupsSnap.docs
       .map((d) => mapGroup(d.id, d.data()))
       .sort((a, b) => a.name.localeCompare(b.name)),
+    reports:
+      reportsSnap?.docs
+        .map((d) => mapReport(d.id, d.data()))
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)) ?? null,
   };
 }
 

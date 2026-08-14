@@ -8,6 +8,7 @@ struct MoreView: View {
 
     @State private var isConfirmingDeletion = false
     @State private var isDeleting = false
+    @State private var isReporting = false
 
     var body: some View {
         List {
@@ -43,6 +44,16 @@ struct MoreView: View {
                             .font(.system(size: 13))
                     }
                 }
+
+                // Every event, story and profile carries its own Report action;
+                // this is the address that always works, whatever screen the
+                // content was on.
+                Button {
+                    isReporting = true
+                } label: {
+                    Label("Report content or a user", systemImage: "flag")
+                }
+                .foregroundStyle(Theme.ink)
 
                 if session.isAdmin {
                     NavigationLink {
@@ -115,6 +126,11 @@ struct MoreView: View {
         .navigationTitle("More")
         .navigationBarTitleDisplayMode(.inline)
         .tint(Theme.blue)
+        .sheet(isPresented: $isReporting) {
+            NavigationStack {
+                ReportSheet(target: .general)
+            }
+        }
         .alert("Delete your account?", isPresented: $isConfirmingDeletion) {
             Button("Delete permanently", role: .destructive) {
                 Task { await deleteAccount() }

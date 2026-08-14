@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { ConfigNotice } from "@/components/ConfigNotice";
 import { EmptyNote } from "@/components/EmptyNote";
 import { Icons } from "@/components/Icons";
+import { ReportButton } from "@/components/ReportDialog";
 import { SquadPhoto } from "@/components/SquadPhoto";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
@@ -287,6 +288,15 @@ export default function SquadClient() {
               >
                 {Icons.link} Follow
               </a>
+            )}
+            {/* Reporting a profile is how you report the person behind it. */}
+            {!(user && m.userId === user.uid) && (
+              <div className="mt-3">
+                <ReportButton
+                  target={{ type: "member", id: m.id, label: m.name }}
+                  label="Report this member"
+                />
+              </div>
             )}
           </article>
         ))}
