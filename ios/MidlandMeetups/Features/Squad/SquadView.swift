@@ -373,7 +373,15 @@ private struct SquadForm {
 private struct SquadMemberCard: View {
     let member: SquadMember
 
+    @Environment(SessionStore.self) private var session
     @Environment(\.openURL) private var openURL
+
+    /// Reporting a profile is how you report the person behind it — so it's
+    /// offered on everyone's card but your own.
+    private var isMine: Bool {
+        guard let uid = session.uid, let memberId = member.userId else { return false }
+        return uid == memberId
+    }
 
     private var subtitle: String {
         [member.age, member.gender].filter { !$0.isEmpty }.joined(separator: " · ")
@@ -421,6 +429,11 @@ private struct SquadMemberCard: View {
                 }
                 .buttonStyle(.plain)
                 .padding(.top, 2)
+            }
+
+            if !isMine {
+                ReportButton(target: .member(member))
+                    .padding(.top, 2)
             }
         }
         .frame(maxWidth: .infinity, alignment: .center)

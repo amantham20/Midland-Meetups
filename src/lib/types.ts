@@ -105,3 +105,64 @@ export const STATUS_LABEL: Record<EventStatus, string> = {
   canceled: "Canceled",
   relocated: "Relocated",
 };
+
+/**
+ * What a report points at. `member` covers both a squad profile and the person
+ * behind it — reporting someone and reporting their profile is one action here.
+ * `other` is the catch-all filed from the standalone report form, where there is
+ * no single document to attach to.
+ */
+export type ReportTargetType = "event" | "memory" | "member" | "other";
+
+export type ReportStatus = "open" | "reviewed";
+
+export const REPORT_REASONS = [
+  { value: "harassment", label: "Harassment or bullying" },
+  { value: "hate", label: "Hate speech or discrimination" },
+  { value: "sexual", label: "Sexual or explicit content" },
+  { value: "violence", label: "Violence or threats" },
+  { value: "spam", label: "Spam or a scam" },
+  { value: "impersonation", label: "Impersonation or a fake profile" },
+  { value: "illegal", label: "Illegal or dangerous activity" },
+  { value: "other", label: "Something else" },
+] as const;
+
+export type ReportReason = (typeof REPORT_REASONS)[number]["value"];
+
+export function reportReasonLabel(value: string): string {
+  return REPORT_REASONS.find((r) => r.value === value)?.label || value;
+}
+
+/** The collection a report's target lives in, when it has one. */
+export const REPORT_TARGET_COLLECTION: Record<
+  ReportTargetType,
+  "events" | "memories" | "squad" | null
+> = {
+  event: "events",
+  memory: "memories",
+  member: "squad",
+  other: null,
+};
+
+export const REPORT_TARGET_LABEL: Record<ReportTargetType, string> = {
+  event: "Event",
+  memory: "Lore story",
+  member: "Member",
+  other: "General",
+};
+
+export interface Report {
+  id: string;
+  targetType: ReportTargetType;
+  /** Document id of the reported content; "" for a general report. */
+  targetId: string;
+  /** Title / name captured when filed, so the queue reads even after a delete. */
+  targetLabel: string;
+  reason: string;
+  details: string;
+  reportedBy: string;
+  reporterEmail: string;
+  reporterName: string;
+  status: ReportStatus;
+  createdAt: string;
+}

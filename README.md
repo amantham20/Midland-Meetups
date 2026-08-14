@@ -23,7 +23,8 @@ Progressive Web App rewrite of the Midland Meetups bulletin board.
 | Tag a host | Pick a squad member instead of typing a name — they can then edit the event too |
 | Edit your own events | Submitter and tagged host edit from `/submit` or the event dialog; admins edit any event from `/admin` → Events |
 | Sign-in | Firebase Auth — Email/Password |
-| Admin queue | `/admin` — approve/reject + edit any event end to end (bootstrap UID and/or admin claim) |
+| Report content or a user | Firestore `reports` — a Report action on every event, story and profile, plus `/report` (web) and More → Report (iOS) |
+| Admin queue | `/admin` — approve/reject + edit any event end to end, and work the report queue (bootstrap UID and/or admin claim) |
 | PWA install | Web App Manifest + service worker via next-pwa |
 | Event reminders | FCM tokens + Next.js `/api/cron/reminders` (Vercel Cron or any external cron) |
 | Admin claim | Next.js `/api/admin/claim` (optional; bootstrap UIDs already in rules) |
@@ -183,6 +184,25 @@ Photos are **not** in Cloud Storage. The browser compresses to ~320px JPEG and s
 
 `name` is always the account's own name — there's no alias to pick when you RSVP.
 
+### `reports/{id}`
+
+| Field | Type | Notes |
+|-------|------|--------|
+| targetType | string | `event` \| `memory` \| `member` \| `other` (`other` = the general form) |
+| targetId | string | document id of the reported content; `""` for a general report |
+| targetLabel | string | title/name captured when filed, so the queue still reads after a delete |
+| reason | string | `harassment`, `hate`, `sexual`, `violence`, `spam`, `impersonation`, `illegal`, `other` |
+| details | string | free text, capped at 2,000 characters by the rules |
+| reportedBy | string | Auth UID, pinned to `request.auth.uid` by the rules |
+| reporterEmail, reporterName | string | so an organizer can follow up |
+| status | string | `open` \| `reviewed` — creates are pinned to `open` |
+| createdAt | timestamp | |
+
+Write-only for members: reporting needs an account so the collection isn't an
+open write endpoint, and **only admins can read** — a reporter can't read back
+even their own report. Admins mark a report reviewed, delete what it points at,
+or dismiss it. The published fallback is the address in the Terms.
+
 ### `fcmTokens/{token}`
 
 `token`, `userId`, `updatedAt`
@@ -272,7 +292,8 @@ xcodebuild -project ios/MidlandMeetups.xcodeproj -scheme MidlandMeetups -destina
 | `/squad` | Squad tab — member grid, join/edit your profile with a photo picker |
 | `/submit` | More → Submit an Event, your own submissions with Edit, and the **+** on Happenings |
 | `/login` | More → Sign in (Identity Toolkit REST; session in the keychain) |
-| `/admin` | More → Admin queue — approvals, full edit on any event, audience groups |
+| `/admin` | More → Admin queue — approvals, full edit on any event, audience groups, reports |
+| `/report` | More → Report content or a user, plus a Report action on every event, story and profile |
 | Game link | More → Game (opens in the browser) |
 
 Native additions: **Add to Calendar** writes straight into the user's calendar via

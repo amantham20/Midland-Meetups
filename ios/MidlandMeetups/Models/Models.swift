@@ -150,6 +150,125 @@ struct Rsvp: Identifiable, Hashable {
     }
 }
 
+// MARK: - Report
+
+/// What a report points at. `member` covers both a squad profile and the person
+/// behind it — reporting someone and reporting their profile is one action here.
+/// `other` is the catch-all filed from More → Report, where there is no single
+/// document to attach to.
+enum ReportTargetType: String, Codable, Hashable {
+    case event
+    case memory
+    case member
+    case other
+
+    var label: String {
+        switch self {
+        case .event: return "Event"
+        case .memory: return "Lore story"
+        case .member: return "Member"
+        case .other: return "General"
+        }
+    }
+
+    /// The collection the target lives in, when it has one.
+    var collection: String? {
+        switch self {
+        case .event: return "events"
+        case .memory: return "memories"
+        case .member: return "squad"
+        case .other: return nil
+        }
+    }
+}
+
+enum ReportReason: String, CaseIterable, Codable, Hashable {
+    case harassment
+    case hate
+    case sexual
+    case violence
+    case spam
+    case impersonation
+    case illegal
+    case other
+
+    var label: String {
+        switch self {
+        case .harassment: return "Harassment or bullying"
+        case .hate: return "Hate speech or discrimination"
+        case .sexual: return "Sexual or explicit content"
+        case .violence: return "Violence or threats"
+        case .spam: return "Spam or a scam"
+        case .impersonation: return "Impersonation or a fake profile"
+        case .illegal: return "Illegal or dangerous activity"
+        case .other: return "Something else"
+        }
+    }
+
+    static func label(for raw: String) -> String {
+        ReportReason(rawValue: raw)?.label ?? raw
+    }
+}
+
+enum ReportStatus: String, Codable, Hashable {
+    case open
+    case reviewed
+}
+
+/// A filed report. Only organizers can read these — see `firestore.rules`.
+struct ContentReport: Identifiable, Hashable {
+    var id: String
+    var targetType: ReportTargetType
+    /// Document id of the reported content; empty for a general report.
+    var targetId: String
+    /// Title or name captured when filed, so the queue reads even after a delete.
+    var targetLabel: String
+    var reason: String
+    var details: String
+    var reportedBy: String
+    var reporterEmail: String
+    var reporterName: String
+    var status: ReportStatus
+    var createdAt: Date?
+
+    init(document: FirestoreDocument) {
+        id = document.id
+        targetType = ReportTargetType(rawValue: document.string("targetType")) ?? .other
+        targetId = document.string("targetId")
+        targetLabel = document.string("targetLabel")
+        reason = document.string("reason")
+        details = document.string("details")
+        reportedBy = document.string("reportedBy")
+        reporterEmail = document.string("reporterEmail")
+        reporterName = document.string("reporterName")
+        status = ReportStatus(rawValue: document.string("status")) ?? .open
+        createdAt = document.date("createdAt")
+    }
+}
+
+/// What a report is being filed against, handed to the report sheet.
+struct ReportTarget: Identifiable, Hashable {
+    var type: ReportTargetType
+    /// Document id of the thing being reported; empty for a general report.
+    var id: String = ""
+    /// Title or name, shown back to the reporter and stored with the report.
+    var label: String = ""
+
+    static let general = ReportTarget(type: .other)
+
+    static func event(_ event: MeetupEvent) -> ReportTarget {
+        ReportTarget(type: .event, id: event.id, label: event.title)
+    }
+
+    static func memory(_ memory: Memory) -> ReportTarget {
+        ReportTarget(type: .memory, id: memory.id, label: memory.title)
+    }
+
+    static func member(_ member: SquadMember) -> ReportTarget {
+        ReportTarget(type: .member, id: member.id, label: member.name)
+    }
+}
+
 // MARK: - Audience group
 
 struct AudienceGroup: Identifiable, Hashable {

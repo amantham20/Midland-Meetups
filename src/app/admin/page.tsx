@@ -20,31 +20,37 @@ import { useToast } from "@/contexts/ToastContext";
 import {
   approveDocument,
   deleteGroup,
+  deleteReport,
   fetchAllForAdmin,
   isAdminClaimEndpointConfigured,
   linkUserIdsForSquadEmails,
   rejectDocument,
   requestAdminClaim,
   saveGroup,
+  setReportStatus,
   adminUpdateSquadMember,
 } from "@/lib/firebase/data";
 import { normalizeEmail } from "@/lib/audience";
-import type {
-  AudienceGroup,
-  MeetupEvent,
-  Memory,
-  SquadMember,
+import {
+  REPORT_TARGET_COLLECTION,
+  type AudienceGroup,
+  type MeetupEvent,
+  type Memory,
+  type Report,
+  type SquadMember,
 } from "@/lib/types";
 import { ReviewPanel } from "./ReviewPanel";
 import { SquadPanel, draftFromMember, type SquadDraft } from "./SquadPanel";
 import { GroupsPanel } from "./GroupsPanel";
 import { EventsPanel } from "./EventsPanel";
+import { ReportsPanel } from "./ReportsPanel";
 import { StatTile } from "./ui";
 
-type Tab = "review" | "squad" | "groups" | "events";
+type Tab = "review" | "reports" | "squad" | "groups" | "events";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "review", label: "Review" },
+  { id: "reports", label: "Reports" },
   { id: "squad", label: "Squad" },
   { id: "groups", label: "Groups" },
   { id: "events", label: "Events" },
@@ -76,6 +82,8 @@ export default function AdminPage() {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [squad, setSquad] = useState<SquadMember[]>([]);
   const [groups, setGroups] = useState<AudienceGroup[]>([]);
+  /** null while unread — the reports rules may not be deployed yet. */
+  const [reports, setReports] = useState<Report[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [claimBusy, setClaimBusy] = useState(false);
@@ -104,11 +112,13 @@ export default function AdminPage() {
       memories: Memory[];
       squad: SquadMember[];
       groups: AudienceGroup[];
+      reports: Report[] | null;
     }) => {
       setEvents(data.events);
       setMemories(data.memories);
       setSquad(data.squad);
       setGroups(data.groups);
+      setReports(data.reports);
       setError(null);
       setAccessDenied(false);
     },
@@ -180,6 +190,24 @@ export default function AdminPage() {
   );
   const pendingTotal =
     pendingEvents.length + pendingMemories.length + pendingSquad.length;
+  const openReports = useMemo(
+    () => (reports || []).filter((r) => r.status === "open").length,
+    [reports],
+  );
+  /**
+   * Every document a report can point at. A report keeps working after its
+   * target is deleted — this is what tells the panel to stop offering to
+   * delete something that's already gone.
+   */
+  const liveTargetIds = useMemo(
+    () =>
+      new Set([
+        ...events.map((e) => e.id),
+        ...memories.map((m) => m.id),
+        ...squad.map((s) => s.id),
+      ]),
+    [events, memories, squad],
+  );
 
   const squadSorted = useMemo(
     () =>
@@ -242,6 +270,62 @@ export default function AdminPage() {
       const msg = "Reject failed. Check admin access and Firestore rules.";
       setError(msg);
       toast.error(msg);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function markReport(id: string, status: "open" | "reviewed") {
+    setBusyId(id);
+    try {
+      await setReportStatus(id, status);
+      await load();
+      toast.success(status === "reviewed" ? "Marked reviewed." : "Reopened.");
+    } catch (err) {
+      console.error(err);
+      if (isPermissionDenied(err)) setAccessDenied(true);
+      toast.error("Couldn't update that report.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  /** Delete what a report points at, then close the report out. */
+  async function removeReportedContent(report: Report) {
+    const collectionName = REPORT_TARGET_COLLECTION[report.targetType];
+    if (!collectionName) return;
+    if (
+      !window.confirm(
+        `Delete “${report.targetLabel || "this content"}”? This can't be undone.`,
+      )
+    )
+      return;
+    setBusyId(report.id);
+    try {
+      await rejectDocument(collectionName, report.targetId);
+      await setReportStatus(report.id, "reviewed");
+      await load();
+      toast.success("Content deleted and the report marked reviewed.");
+    } catch (err) {
+      console.error(err);
+      if (isPermissionDenied(err)) setAccessDenied(true);
+      toast.error("Couldn't delete that content.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function dismissReport(id: string) {
+    if (!window.confirm("Dismiss and delete this report?")) return;
+    setBusyId(id);
+    try {
+      await deleteReport(id);
+      await load();
+      toast.success("Report dismissed.");
+    } catch (err) {
+      console.error(err);
+      if (isPermissionDenied(err)) setAccessDenied(true);
+      toast.error("Couldn't dismiss that report.");
     } finally {
       setBusyId(null);
     }
@@ -511,12 +595,18 @@ export default function AdminPage() {
         </p>
       )}
 
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <StatTile
           label="Awaiting review"
           value={pendingTotal}
           tone={pendingTotal > 0 ? "amber" : "green"}
           icon={<InboxIcon className="h-5 w-5" />}
+        />
+        <StatTile
+          label="Open reports"
+          value={openReports}
+          tone={openReports > 0 ? "amber" : "green"}
+          icon={<AlertIcon className="h-5 w-5" />}
         />
         <StatTile
           label="Squad profiles"
@@ -547,11 +637,13 @@ export default function AdminPage() {
             const badge =
               t.id === "review"
                 ? pendingTotal
-                : t.id === "squad"
-                  ? squad.length
-                  : t.id === "groups"
-                    ? groups.length
-                    : events.length;
+                : t.id === "reports"
+                  ? openReports
+                  : t.id === "squad"
+                    ? squad.length
+                    : t.id === "groups"
+                      ? groups.length
+                      : events.length;
             return (
               <button
                 key={t.id}
@@ -571,7 +663,8 @@ export default function AdminPage() {
                     "rounded-full px-1.5 text-xs font-bold tabular-nums",
                     on
                       ? "bg-white/20 text-white"
-                      : t.id === "review" && pendingTotal > 0
+                      : (t.id === "review" && pendingTotal > 0) ||
+                          (t.id === "reports" && openReports > 0)
                         ? "bg-yellow/25 text-yellow-ink"
                         : "bg-surface-2 text-muted",
                   ].join(" ")}
@@ -605,6 +698,16 @@ export default function AdminPage() {
               busyId={busyId}
               onApprove={(c, id) => void approve(c, id)}
               onReject={(c, id) => void reject(c, id)}
+            />
+          )}
+          {tab === "reports" && (
+            <ReportsPanel
+              reports={reports}
+              busyId={busyId}
+              liveTargetIds={liveTargetIds}
+              onSetStatus={(id, status) => void markReport(id, status)}
+              onDeleteContent={(report) => void removeReportedContent(report)}
+              onDeleteReport={(id) => void dismissReport(id)}
             />
           )}
           {tab === "squad" && (

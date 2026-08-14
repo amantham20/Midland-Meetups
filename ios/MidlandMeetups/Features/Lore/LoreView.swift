@@ -172,6 +172,11 @@ private struct MemoryCard: View {
                 .foregroundStyle(Theme.ink.opacity(0.9))
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
+
+            HStack {
+                Spacer(minLength: 0)
+                ReportButton(target: .memory(memory))
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardSurface()

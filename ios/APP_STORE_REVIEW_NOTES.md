@@ -31,7 +31,10 @@ permission prompt. Suggested take, in order:
 6. Sign out → sign in as the organizer → More → Admin queue → **Approve** → the event
    appears on Happenings. Also show a reject/delete.
 7. Lore → Add to the Letter, and Squad → profile with a photo from the picker.
-8. More → **Delete account** → the confirmation alert → the account is gone and the
+8. Any event → **Report this event** → pick a reason → **Send report**, then as the
+   organizer, More → Admin queue → **Reports** → **Mark reviewed** or **Delete
+   content**. This is the reporting mechanism Apple asks to see.
+9. More → **Delete account** → the confirmation alert → the account is gone and the
    app drops back to signed out. Use a throwaway account for this take.
 
 **The site URL** for the privacy and terms links. The deployed domain is not
@@ -53,7 +56,7 @@ reviewer can see restricted events too.
 ## 3. Gaps to close before resubmitting
 
 These came out of reading the code, and each maps to a guideline Apple has rejected
-on before. The first is fixed; the rest are still open.
+on before. The first two are fixed; the rest are still open.
 
 ### 1. ~~No in-app account deletion~~ — Guideline 5.1.1(v) — **DONE**
 
@@ -84,22 +87,51 @@ else's content).
 firebase deploy --only firestore:rules
 ```
 
-### 2. No in-app report or block for user-generated content — Guideline 1.2
+### 2. ~~No in-app report~~ — Guideline 1.2 — **DONE** (block is still open)
 
 Events, stories, squad profiles and RSVP names are all user-generated. The strong
 defense is that everything is pre-moderated: nothing is visible to anyone else until
 an organizer approves it, enforced in the rules. That satisfies the filtering
-requirement, and the reply leads with it. But 1.2 also asks for a
-mechanism to report content and a mechanism to block abusive users, and reviewers
-commonly hold apps to both regardless of pre-moderation. Worth noting that
-[terms/page.tsx:154](../src/app/terms/page.tsx:154) already tells users they may
-"report content, block other users, or mute notifications directly through the
-Application's interface" where those features exist — a reviewer reading the linked
-terms may go looking for them.
+requirement, and the reply leads with it. 1.2 also asks for a mechanism to report
+content and a mechanism to block abusive users; **reporting now ships, blocking does
+not.**
 
-Cheapest fix: a "Report" action on the event detail, story and profile cards that
-opens a prefilled mail composer to hey@amantham.com, plus a local block list that
-hides a blocked member's content and RSVP name.
+Reporting, in both apps. A **Report** action sits on the event detail, on each Lore
+story, and on every squad profile but your own — reporting a profile is how you
+report the person behind it. The always-available path is **More → Report content or
+a user** on iOS and `/report` on the web (linked in the footer), for anything with no
+single document to attach to. The sheet takes a reason from a fixed list plus
+optional details, and every screen also offers the mail fallback to hey@amantham.com
+prefilled with what's being reported. Files:
+[ReportSheet.swift](MidlandMeetups/Features/Report/ReportSheet.swift) and
+[ReportDialog.tsx](../src/components/ReportDialog.tsx).
+
+Reports land in `reports` and surface in the in-app organizer queue — Admin →
+Reports on both platforms — where an organizer marks one reviewed, deletes what it
+points at, or dismisses it. A report keeps its target's title, so the queue still
+reads after the content is gone.
+
+[firestore.rules](../firestore.rules) makes the queue write-only for members:
+creating one requires an account and is pinned to `request.auth.uid` with
+`status == 'open'`, and **only admins can read** — a reporter can't read back even
+their own report. Verified against the Firestore emulator: 19 report cases (create,
+read, resolve) and 4 regressions on the untouched collections all hold.
+
+**Deploy the rules with the build.** Until they are deployed the collection is
+unreadable and unwritable: reports fail to send, and the queue shows "Couldn't read
+the reports queue" instead of the reports (the rest of the admin page still loads).
+
+```bash
+firebase deploy --only firestore:rules
+```
+
+Still open: **blocking**. There is no way for a member to hide another member's
+content or RSVP name. [terms/page.tsx](../src/app/terms/page.tsx) is now specific
+about the reporting path and keeps blocking and muting conditional ("where the
+Application provides them"), so the terms no longer promise a control the app
+lacks — but a reviewer holding the app to the letter of 1.2 may still ask. A local
+block list (on-device, hiding a blocked member's events, stories, profile and RSVP
+name) is the cheapest way to close it.
 
 ### 3. No Privacy Policy or Terms link inside the app
 

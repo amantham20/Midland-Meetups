@@ -14,10 +14,25 @@ struct AdminView: View {
     @State private var editingEvent: MeetupEvent?
     @State private var editingGroup: GroupDraft?
     @State private var pendingRejection: Rejection?
+    @State private var pendingContentDeletion: ContentReport?
+    @State private var pendingReportDismissal: ContentReport?
 
     private var pendingEvents: [MeetupEvent] { snapshot.events.filter { !$0.approved } }
     private var pendingMemories: [Memory] { snapshot.memories.filter { !$0.approved } }
     private var pendingSquad: [SquadMember] { snapshot.squad.filter { !$0.approved } }
+    private var openReports: [ContentReport] {
+        (snapshot.reports ?? []).filter { $0.status == .open }
+    }
+    private var reviewedReports: [ContentReport] {
+        (snapshot.reports ?? []).filter { $0.status == .reviewed }
+    }
+
+    /// Every document a report can point at. A report outlives its target, so
+    /// this is what tells a card to stop offering to delete something that's
+    /// already gone.
+    private var liveTargetIds: Set<String> {
+        Set(snapshot.events.map(\.id) + snapshot.memories.map(\.id) + snapshot.squad.map(\.id))
+    }
     /// Every event, pending included — admins edit all of them here.
     private var allEvents: [MeetupEvent] {
         snapshot.events.sorted { $0.date > $1.date }
@@ -43,6 +58,7 @@ struct AdminView: View {
                 } else if let errorMessage {
                     EmptyNote(errorMessage)
                 } else {
+                    reportsSection
                     queueSections
                     statusSection
                     groupsSection
@@ -93,9 +109,168 @@ struct AdminView: View {
         } message: {
             Text("Rejecting deletes \(pendingRejection?.label ?? "this submission"). This can't be undone.")
         }
+        .confirmationDialog(
+            "Delete the reported content?",
+            isPresented: Binding(
+                get: { pendingContentDeletion != nil },
+                set: { if !$0 { pendingContentDeletion = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete permanently", role: .destructive) {
+                if let pendingContentDeletion {
+                    Task { await deleteReportedContent(pendingContentDeletion) }
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingContentDeletion = nil }
+        } message: {
+            Text("This deletes \(pendingContentDeletion?.targetLabel ?? "the reported content") and marks the report reviewed. This can't be undone.")
+        }
+        .confirmationDialog(
+            "Dismiss this report?",
+            isPresented: Binding(
+                get: { pendingReportDismissal != nil },
+                set: { if !$0 { pendingReportDismissal = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Dismiss report", role: .destructive) {
+                if let pendingReportDismissal {
+                    Task { await dismissReport(pendingReportDismissal) }
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingReportDismissal = nil }
+        } message: {
+            Text("The report leaves the queue. Whatever it pointed at stays where it is.")
+        }
     }
 
     // MARK: - Sections
+
+    /// Reports members filed from the app. Open ones lead; the reviewed ones
+    /// stay below as a record until an organizer clears them out.
+    @ViewBuilder
+    private var reportsSection: some View {
+        SectionHeading(text: "Reports (\(openReports.count))")
+
+        if snapshot.reports == nil {
+            EmptyNote("Couldn't read the reports queue — deploy the current firestore.rules, which is what grants organizers access to it.")
+        } else if openReports.isEmpty, reviewedReports.isEmpty {
+            EmptyNote("No one has reported anything.")
+        } else {
+            if openReports.isEmpty {
+                EmptyNote("Nothing open. Reviewed reports are below.")
+            }
+            ForEach(openReports) { report in
+                reportCard(report)
+            }
+            if !reviewedReports.isEmpty {
+                Text("Reviewed (\(reviewedReports.count))")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.muted)
+                ForEach(reviewedReports) { report in
+                    reportCard(report)
+                }
+            }
+        }
+    }
+
+    private func reportCard(_ report: ContentReport) -> some View {
+        let targetExists = report.targetType.collection != nil
+            && liveTargetIds.contains(report.targetId)
+        let isOpen = report.status == .open
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(ReportReason.label(for: report.reason))
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Theme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(reportSubtitle(report, targetExists: targetExists))
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                Text(isOpen ? "Open" : "Reviewed")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(isOpen ? Theme.red : Theme.muted)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background((isOpen ? Theme.red : Theme.muted).opacity(0.14))
+                    .clipShape(Capsule())
+            }
+
+            if !report.details.isEmpty {
+                Text(report.details)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.ink.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Text("Filed by \(report.reporterName.isEmpty ? "a member" : report.reporterName)"
+                + (report.reporterEmail.isEmpty ? "" : " · \(report.reporterEmail)"))
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.muted)
+
+            HStack(spacing: 10) {
+                Button {
+                    Task { await setReportStatus(report, to: isOpen ? .reviewed : .open) }
+                } label: {
+                    Text(isOpen ? "Mark reviewed" : "Reopen")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Theme.ink)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Theme.surface2)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(busyId == report.id)
+
+                if targetExists {
+                    Button {
+                        pendingContentDeletion = report
+                    } label: {
+                        Text("Delete content")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Theme.red)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Theme.surface)
+                            .clipShape(Capsule())
+                            .overlay(Capsule().strokeBorder(Theme.red.opacity(0.5), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(busyId == report.id)
+                }
+            }
+
+            Button {
+                pendingReportDismissal = report
+            } label: {
+                Text("Dismiss report")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.muted)
+            }
+            .buttonStyle(.plain)
+            .disabled(busyId == report.id)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardSurface(padding: 16, cornerRadius: Theme.radiusMedium)
+        .opacity(busyId == report.id ? 0.6 : 1)
+    }
+
+    private func reportSubtitle(_ report: ContentReport, targetExists: Bool) -> String {
+        var parts = [report.targetType.label]
+        if !report.targetLabel.isEmpty { parts.append(report.targetLabel) }
+        if !report.targetId.isEmpty, !targetExists { parts.append("content already gone") }
+        if let filed = report.createdAt {
+            parts.append(filed.formatted(date: .abbreviated, time: .shortened))
+        }
+        return parts.joined(separator: " · ")
+    }
 
     private var claimNotice: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -322,6 +497,51 @@ struct AdminView: View {
             await data.refreshFeed(signedIn: session.isSignedIn)
         } catch {
             toasts.error((error as? LocalizedError)?.errorDescription ?? "Couldn't reject that.")
+        }
+    }
+
+    private func setReportStatus(_ report: ContentReport, to status: ReportStatus) async {
+        busyId = report.id
+        defer { busyId = nil }
+        do {
+            try await data.setReportStatus(id: report.id, status: status)
+            toasts.success(status == .reviewed ? "Marked reviewed." : "Reopened.")
+            await load()
+        } catch {
+            toasts.error(
+                (error as? LocalizedError)?.errorDescription ?? "Couldn't update that report."
+            )
+        }
+    }
+
+    private func deleteReportedContent(_ report: ContentReport) async {
+        pendingContentDeletion = nil
+        busyId = report.id
+        defer { busyId = nil }
+        do {
+            try await data.deleteReportedContent(report)
+            toasts.success("Content deleted and the report marked reviewed.")
+            await load()
+            await data.refreshFeed(signedIn: session.isSignedIn)
+        } catch {
+            toasts.error(
+                (error as? LocalizedError)?.errorDescription ?? "Couldn't delete that content."
+            )
+        }
+    }
+
+    private func dismissReport(_ report: ContentReport) async {
+        pendingReportDismissal = nil
+        busyId = report.id
+        defer { busyId = nil }
+        do {
+            try await data.deleteReport(id: report.id)
+            toasts.info("Report dismissed.")
+            await load()
+        } catch {
+            toasts.error(
+                (error as? LocalizedError)?.errorDescription ?? "Couldn't dismiss that report."
+            )
         }
     }
 

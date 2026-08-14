@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { ConfigNotice } from "@/components/ConfigNotice";
 import { EmptyNote } from "@/components/EmptyNote";
 import { AttributionField } from "@/components/AttributionField";
+import { ReportButton } from "@/components/ReportDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import {
@@ -130,6 +131,11 @@ export default function LorePage() {
             <p className="whitespace-pre-wrap leading-relaxed text-ink/90">
               {mem.text}
             </p>
+            <div className="mt-3 flex justify-end">
+              <ReportButton
+                target={{ type: "memory", id: mem.id, label: mem.title }}
+              />
+            </div>
           </article>
         ))}
       </section>
