@@ -35,9 +35,12 @@ function EventRow({
             {event.title}
           </h3>
           <StatusPill status={event.status} />
-          {!event.approved && (
-            <span className="badge badge-amber">Awaiting approval</span>
-          )}
+          {!event.approved &&
+            (event.hidden ? (
+              <span className="badge badge-red">Removed by organizers</span>
+            ) : (
+              <span className="badge badge-amber">Awaiting approval</span>
+            ))}
           {taggedIn && (
             <span className="badge badge-blue">Tagged as host</span>
           )}

@@ -15,11 +15,23 @@ struct AdminView: View {
     @State private var editingGroup: GroupDraft?
     @State private var pendingRejection: Rejection?
     @State private var pendingContentDeletion: ContentReport?
+    @State private var pendingContentHide: ContentReport?
     @State private var pendingReportDismissal: ContentReport?
+    @State private var pendingTakedown: Takedown?
+    @State private var pendingDeletion: Takedown?
 
-    private var pendingEvents: [MeetupEvent] { snapshot.events.filter { !$0.approved } }
-    private var pendingMemories: [Memory] { snapshot.memories.filter { !$0.approved } }
-    private var pendingSquad: [SquadMember] { snapshot.squad.filter { !$0.approved } }
+    // Something an organizer took down is not waiting on a decision — it already
+    // got one. Keeping hidden content out of the review queue is what stops it
+    // reading like a fresh submission that another organizer should approve.
+    private var pendingEvents: [MeetupEvent] {
+        snapshot.events.filter { !$0.approved && !$0.hidden }
+    }
+    private var pendingMemories: [Memory] {
+        snapshot.memories.filter { !$0.approved && !$0.hidden }
+    }
+    private var pendingSquad: [SquadMember] {
+        snapshot.squad.filter { !$0.approved && !$0.hidden }
+    }
     private var openReports: [ContentReport] {
         (snapshot.reports ?? []).filter { $0.status == .open }
     }
@@ -27,15 +39,24 @@ struct AdminView: View {
         (snapshot.reports ?? []).filter { $0.status == .reviewed }
     }
 
-    /// Every document a report can point at. A report outlives its target, so
-    /// this is what tells a card to stop offering to delete something that's
-    /// already gone.
-    private var liveTargetIds: Set<String> {
-        Set(snapshot.events.map(\.id) + snapshot.memories.map(\.id) + snapshot.squad.map(\.id))
+    /// Every document a report can point at, mapped to whether it's still on the
+    /// board. A report outlives its target, so a missing id is what tells a card
+    /// to stop offering to remove something that's already gone, and a `false`
+    /// marks content that's been hidden but not deleted.
+    private var targetPublished: [String: Bool] {
+        var map: [String: Bool] = [:]
+        for event in snapshot.events { map[event.id] = event.approved }
+        for memory in snapshot.memories { map[memory.id] = memory.approved }
+        for member in snapshot.squad { map[member.id] = member.approved }
+        return map
     }
-    /// Every event, pending included — admins edit all of them here.
+    /// Every event, pending and hidden included — admins edit all of them here.
     private var allEvents: [MeetupEvent] {
         snapshot.events.sorted { $0.date > $1.date }
+    }
+    /// Every Lore story, newest first — publish, hide and delete live here.
+    private var allMemories: [Memory] {
+        snapshot.memories.sorted { $0.date > $1.date }
     }
 
     var body: some View {
@@ -61,6 +82,7 @@ struct AdminView: View {
                     reportsSection
                     queueSections
                     statusSection
+                    loreSection
                     groupsSection
                 }
             }
@@ -124,7 +146,62 @@ struct AdminView: View {
             }
             Button("Cancel", role: .cancel) { pendingContentDeletion = nil }
         } message: {
-            Text("This deletes \(pendingContentDeletion?.targetLabel ?? "the reported content") and marks the report reviewed. This can't be undone.")
+            Text("This deletes \(pendingContentDeletion?.targetLabel ?? "the reported content") and marks the report reviewed. This can't be undone — hide it instead if you might want it back.")
+        }
+        .confirmationDialog(
+            "Hide the reported content?",
+            isPresented: Binding(
+                get: { pendingContentHide != nil },
+                set: { if !$0 { pendingContentHide = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Hide from everyone") {
+                if let pendingContentHide {
+                    Task { await hideReportedContent(pendingContentHide) }
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingContentHide = nil }
+        } message: {
+            Text("\(pendingContentHide?.targetLabel ?? "The reported content") comes off the board for every member and the report is marked reviewed. You can publish it again later.")
+        }
+        .confirmationDialog(
+            pendingTakedown?.published == true ? "Publish this again?" : "Hide this from everyone?",
+            isPresented: Binding(
+                get: { pendingTakedown != nil },
+                set: { if !$0 { pendingTakedown = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(pendingTakedown?.published == true ? "Publish" : "Hide from everyone") {
+                if let pendingTakedown {
+                    Task { await applyTakedown(pendingTakedown) }
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingTakedown = nil }
+        } message: {
+            Text(
+                pendingTakedown?.published == true
+                    ? "\(pendingTakedown?.label ?? "This") goes back on the board for everyone who can see it."
+                    : "\(pendingTakedown?.label ?? "This") disappears for every member until you publish it again."
+            )
+        }
+        .confirmationDialog(
+            "Delete this for good?",
+            isPresented: Binding(
+                get: { pendingDeletion != nil },
+                set: { if !$0 { pendingDeletion = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete permanently", role: .destructive) {
+                if let pendingDeletion {
+                    Task { await removeContent(pendingDeletion) }
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingDeletion = nil }
+        } message: {
+            Text("This deletes \(pendingDeletion?.label ?? "it") outright. Hide it instead if you might want it back.")
         }
         .confirmationDialog(
             "Dismiss this report?",
@@ -176,8 +253,9 @@ struct AdminView: View {
     }
 
     private func reportCard(_ report: ContentReport) -> some View {
-        let targetExists = report.targetType.collection != nil
-            && liveTargetIds.contains(report.targetId)
+        let published = targetPublished[report.targetId]
+        let targetExists = report.targetType.collection != nil && published != nil
+        let isLive = published == true
         let isOpen = report.status == .open
 
         return VStack(alignment: .leading, spacing: 10) {
@@ -187,7 +265,11 @@ struct AdminView: View {
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(Theme.ink)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(reportSubtitle(report, targetExists: targetExists))
+                    Text(
+                        reportSubtitle(
+                            report, targetExists: targetExists, isLive: isLive
+                        )
+                    )
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.muted)
                         .fixedSize(horizontal: false, vertical: true)
@@ -229,6 +311,22 @@ struct AdminView: View {
                 .buttonStyle(.plain)
                 .disabled(busyId == report.id)
 
+                if targetExists, isLive {
+                    Button {
+                        pendingContentHide = report
+                    } label: {
+                        Text("Hide content")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Theme.ink)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Theme.surface2)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(busyId == report.id)
+                }
+
                 if targetExists {
                     Button {
                         pendingContentDeletion = report
@@ -262,10 +360,13 @@ struct AdminView: View {
         .opacity(busyId == report.id ? 0.6 : 1)
     }
 
-    private func reportSubtitle(_ report: ContentReport, targetExists: Bool) -> String {
+    private func reportSubtitle(
+        _ report: ContentReport, targetExists: Bool, isLive: Bool
+    ) -> String {
         var parts = [report.targetType.label]
         if !report.targetLabel.isEmpty { parts.append(report.targetLabel) }
         if !report.targetId.isEmpty, !targetExists { parts.append("content already gone") }
+        if targetExists, !isLive { parts.append("hidden from everyone") }
         if let filed = report.createdAt {
             parts.append(filed.formatted(date: .abbreviated, time: .shortened))
         }
@@ -361,53 +462,147 @@ struct AdminView: View {
         if allEvents.isEmpty {
             EmptyNote("No events yet.")
         } else {
+            Text("Hiding takes an event off the board for every member at once. Deleting removes it for good.")
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+
             ForEach(allEvents) { event in
-                Button {
-                    editingEvent = event
-                } label: {
+                VStack(alignment: .leading, spacing: 12) {
+                    Button {
+                        editingEvent = event
+                    } label: {
+                        HStack(alignment: .top, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(event.title)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(Theme.ink)
+                                    .multilineTextAlignment(.leading)
+                                Text(EventDates.formatShort(event.date))
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(Theme.muted)
+                                if !event.tags.isEmpty {
+                                    TagChipsView(
+                                        tags: event.tags,
+                                        labels: Audience.nameMap(snapshot.groups)
+                                    )
+                                }
+                                if !event.statusNote.isEmpty {
+                                    Text(event.statusNote)
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(Theme.muted)
+                                        .multilineTextAlignment(.leading)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                            VStack(alignment: .trailing, spacing: 6) {
+                                VisibilityPill(approved: event.approved, hidden: event.hidden)
+                                StatusPill(status: event.status)
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(Theme.muted)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+
+                    TakedownButtons(
+                        isPublished: event.approved,
+                        isBusy: busyId == event.id,
+                        onTogglePublished: {
+                            pendingTakedown = Takedown(
+                                collection: "events",
+                                id: event.id,
+                                label: "“\(event.title)”",
+                                published: !event.approved
+                            )
+                        },
+                        onDelete: {
+                            pendingDeletion = Takedown(
+                                collection: "events",
+                                id: event.id,
+                                label: "“\(event.title)”",
+                                published: false
+                            )
+                        }
+                    )
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .cardSurface(padding: 14, cornerRadius: Theme.radiusMedium)
+                .opacity(busyId == event.id ? 0.6 : 1)
+            }
+        }
+    }
+
+    /// Every Lore Letter story on file. Hiding pulls one off the archive for
+    /// every member; deleting removes it for good.
+    @ViewBuilder
+    private var loreSection: some View {
+        SectionHeading(text: "Lore Letter (\(allMemories.count))")
+            .padding(.top, 8)
+
+        if allMemories.isEmpty {
+            EmptyNote("No stories yet.")
+        } else {
+            Text("Hiding takes a story off the archive for every member at once. Deleting removes it for good.")
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ForEach(allMemories) { memory in
+                VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .top, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(event.title)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(memory.title.isEmpty ? "Untitled" : memory.title)
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(Theme.ink)
                                 .multilineTextAlignment(.leading)
-                            Text(EventDates.formatShort(event.date))
-                                .font(.system(size: 13))
-                                .foregroundStyle(Theme.muted)
-                            if !event.tags.isEmpty {
-                                TagChipsView(
-                                    tags: event.tags,
-                                    labels: Audience.nameMap(snapshot.groups)
-                                )
-                            }
-                            if !event.statusNote.isEmpty {
-                                Text(event.statusNote)
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(Theme.muted)
-                                    .multilineTextAlignment(.leading)
-                            }
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(
+                                "by \(memory.author.isEmpty ? "someone" : memory.author)"
+                                    + (memory.date.isEmpty
+                                        ? "" : " · \(EventDates.formatShort(memory.date))")
+                            )
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.muted)
                         }
                         Spacer(minLength: 0)
-                        VStack(alignment: .trailing, spacing: 6) {
-                            if !event.approved {
-                                Text("Pending")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(Theme.amberInk)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
-                                    .background(Theme.yellow.opacity(0.22))
-                                    .clipShape(Capsule())
-                            }
-                            StatusPill(status: event.status)
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Theme.muted)
-                        }
+                        VisibilityPill(approved: memory.approved, hidden: memory.hidden)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .cardSurface(padding: 14, cornerRadius: Theme.radiusMedium)
+
+                    if !memory.text.isEmpty {
+                        Text(memory.text)
+                            .font(.system(size: 14))
+                            .foregroundStyle(Theme.ink.opacity(0.85))
+                            .lineLimit(4)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    TakedownButtons(
+                        isPublished: memory.approved,
+                        isBusy: busyId == memory.id,
+                        onTogglePublished: {
+                            pendingTakedown = Takedown(
+                                collection: "memories",
+                                id: memory.id,
+                                label: "“\(memory.title)”",
+                                published: !memory.approved
+                            )
+                        },
+                        onDelete: {
+                            pendingDeletion = Takedown(
+                                collection: "memories",
+                                id: memory.id,
+                                label: "“\(memory.title)”",
+                                published: false
+                            )
+                        }
+                    )
                 }
-                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .cardSurface(padding: 14, cornerRadius: Theme.radiusMedium)
+                .opacity(busyId == memory.id ? 0.6 : 1)
             }
         }
     }
@@ -500,6 +695,50 @@ struct AdminView: View {
         }
     }
 
+    /// Takes something off the board for every member, or puts it back. Hiding
+    /// is the reversible half of moderation — the document stays, so a mistake
+    /// costs one tap and an open report keeps its evidence.
+    private func applyTakedown(_ takedown: Takedown) async {
+        pendingTakedown = nil
+        busyId = takedown.id
+        defer { busyId = nil }
+        do {
+            try await data.setContentPublished(
+                collection: takedown.collection,
+                id: takedown.id,
+                published: takedown.published
+            )
+            toasts.success(
+                takedown.published
+                    ? "Published — it's back on the board."
+                    : "Hidden from everyone."
+            )
+            await load()
+            await data.refreshFeed(signedIn: session.isSignedIn)
+        } catch {
+            toasts.error(
+                (error as? LocalizedError)?.errorDescription
+                    ?? (takedown.published
+                        ? "Couldn't publish that."
+                        : "Couldn't hide that.")
+            )
+        }
+    }
+
+    private func removeContent(_ takedown: Takedown) async {
+        pendingDeletion = nil
+        busyId = takedown.id
+        defer { busyId = nil }
+        do {
+            try await data.delete(collection: takedown.collection, id: takedown.id)
+            toasts.info("Deleted.")
+            await load()
+            await data.refreshFeed(signedIn: session.isSignedIn)
+        } catch {
+            toasts.error((error as? LocalizedError)?.errorDescription ?? "Couldn't delete that.")
+        }
+    }
+
     private func setReportStatus(_ report: ContentReport, to status: ReportStatus) async {
         busyId = report.id
         defer { busyId = nil }
@@ -510,6 +749,22 @@ struct AdminView: View {
         } catch {
             toasts.error(
                 (error as? LocalizedError)?.errorDescription ?? "Couldn't update that report."
+            )
+        }
+    }
+
+    private func hideReportedContent(_ report: ContentReport) async {
+        pendingContentHide = nil
+        busyId = report.id
+        defer { busyId = nil }
+        do {
+            try await data.hideReportedContent(report)
+            toasts.success("Hidden from everyone and the report marked reviewed.")
+            await load()
+            await data.refreshFeed(signedIn: session.isSignedIn)
+        } catch {
+            toasts.error(
+                (error as? LocalizedError)?.errorDescription ?? "Couldn't hide that content."
             )
         }
     }
@@ -577,6 +832,74 @@ private struct Rejection: Identifiable {
     let collection: String
     let id: String
     let label: String
+}
+
+/// A pending publish / hide / delete on one document, held while the
+/// confirmation dialog is up.
+private struct Takedown: Identifiable {
+    let collection: String
+    let id: String
+    let label: String
+    /// Where the content should end up. Always false for a deletion.
+    let published: Bool
+}
+
+/// Live / Hidden / Awaiting approval, from the `approved` + `hidden` pair.
+private struct VisibilityPill: View {
+    let approved: Bool
+    let hidden: Bool
+
+    var body: some View {
+        if approved {
+            EmptyView()
+        } else {
+            Text(hidden ? "Hidden" : "Pending")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(hidden ? Theme.red : Theme.amberInk)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background((hidden ? Theme.red.opacity(0.14) : Theme.yellow.opacity(0.22)))
+                .clipShape(Capsule())
+        }
+    }
+}
+
+/// The pair of moderation actions on an event or Lore story: take it off the
+/// board for everyone (reversible), or delete it (not).
+private struct TakedownButtons: View {
+    let isPublished: Bool
+    let isBusy: Bool
+    let onTogglePublished: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: onTogglePublished) {
+                Text(isPublished ? "Hide from everyone" : "Publish")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Theme.surface2)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(isBusy)
+
+            Button(action: onDelete) {
+                Text("Delete")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.red)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Theme.surface)
+                    .clipShape(Capsule())
+                    .overlay(Capsule().strokeBorder(Theme.red.opacity(0.5), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .disabled(isBusy)
+        }
+    }
 }
 
 struct GroupDraft: Identifiable {

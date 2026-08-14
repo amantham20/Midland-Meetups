@@ -37,7 +37,7 @@ export function draftFromMember(m: SquadMember): SquadDraft {
   };
 }
 
-type Filter = "all" | "live" | "pending" | "no-email";
+type Filter = "all" | "live" | "hidden" | "pending" | "no-email";
 
 export function SquadPanel({
   squad,
@@ -62,7 +62,8 @@ export function SquadPanel({
     () => ({
       all: squad.length,
       live: squad.filter((m) => m.approved).length,
-      pending: squad.filter((m) => !m.approved).length,
+      hidden: squad.filter((m) => !m.approved && m.hidden).length,
+      pending: squad.filter((m) => !m.approved && !m.hidden).length,
       noEmail: squad.filter((m) => !m.email).length,
     }),
     [squad],
@@ -72,7 +73,8 @@ export function SquadPanel({
     const q = query.trim().toLowerCase();
     return squad.filter((m) => {
       if (filter === "live" && !m.approved) return false;
-      if (filter === "pending" && m.approved) return false;
+      if (filter === "hidden" && !(!m.approved && m.hidden)) return false;
+      if (filter === "pending" && (m.approved || m.hidden)) return false;
       if (filter === "no-email" && m.email) return false;
       if (!q) return true;
       return [m.name, m.email, m.occupation, m.bio]
@@ -134,6 +136,7 @@ export function SquadPanel({
           options={[
             { value: "all", label: "All", count: counts.all },
             { value: "live", label: "Live", count: counts.live },
+            { value: "hidden", label: "Hidden", count: counts.hidden },
             { value: "pending", label: "Pending", count: counts.pending },
             { value: "no-email", label: "No email", count: counts.noEmail },
           ]}
@@ -177,6 +180,8 @@ export function SquadPanel({
                       </h3>
                       {m.approved ? (
                         <span className="badge badge-green">Live</span>
+                      ) : m.hidden ? (
+                        <span className="badge badge-red">Hidden</span>
                       ) : (
                         <span className="badge badge-amber">Pending</span>
                       )}

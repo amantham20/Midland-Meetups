@@ -96,20 +96,27 @@ requirement, and the reply leads with it. 1.2 also asks for a mechanism to repor
 content and a mechanism to block abusive users; **reporting now ships, blocking does
 not.**
 
-Reporting, in both apps. A **Report** action sits on the event detail, on each Lore
-story, and on every squad profile but your own — reporting a profile is how you
-report the person behind it. The always-available path is **More → Report content or
-a user** on iOS and `/report` on the web (linked in the footer), for anything with no
-single document to attach to. The sheet takes a reason from a fixed list plus
-optional details, and every screen also offers the mail fallback to hey@amantham.com
-prefilled with what's being reported. Files:
+Reporting, in both apps. A **Report** action sits on the event detail and on each
+Lore story. The always-available path is **More → Report content or a user** on iOS
+and `/report` on the web (linked in the footer) — that's the one that covers a member
+or the person behind a profile, along with anything else that has no single document
+to attach to. The sheet takes a reason from a fixed list plus optional details, and
+every screen also offers the mail fallback to hey@amantham.com prefilled with what's
+being reported. Files:
 [ReportSheet.swift](MidlandMeetups/Features/Report/ReportSheet.swift) and
 [ReportDialog.tsx](../src/components/ReportDialog.tsx).
 
 Reports land in `reports` and surface in the in-app organizer queue — Admin →
-Reports on both platforms — where an organizer marks one reviewed, deletes what it
-points at, or dismisses it. A report keeps its target's title, so the queue still
-reads after the content is gone.
+Reports on both platforms — where an organizer marks one reviewed, hides what it
+points at from every user, deletes it, or dismisses the report. A report keeps its
+target's title, so the queue still reads after the content is gone.
+
+Taking content down, in both apps. Organizers hide or delete any event, Lore story or
+squad profile from **Admin → Events / Lore Letter / Reports**. Hiding writes
+`approved: false`, the same flag that gates a brand-new submission, so the read rule
+in [firestore.rules](../firestore.rules) — not just the UI — puts it out of every
+member's reach; it's reversible, which is what makes it the right first move on a
+report. Deleting removes the document outright.
 
 [firestore.rules](../firestore.rules) makes the queue write-only for members:
 creating one requires an account and is pinned to `request.auth.uid` with

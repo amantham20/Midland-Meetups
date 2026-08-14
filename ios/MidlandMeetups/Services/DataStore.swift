@@ -294,6 +294,19 @@ final class DataStore {
         try await setReportStatus(id: report.id, status: .reviewed)
     }
 
+    /// Hides what a report points at, then closes the report out. The usual
+    /// first move on a report: off the board for everyone immediately, and
+    /// still there to look at if the reporter or its author follows up.
+    func hideReportedContent(_ report: ContentReport) async throws {
+        guard let collection = report.targetType.collection, !report.targetId.isEmpty else {
+            throw FirebaseError(message: "That report isn't attached to anything to hide.")
+        }
+        try await setContentPublished(
+            collection: collection, id: report.targetId, published: false
+        )
+        try await setReportStatus(id: report.id, status: .reviewed)
+    }
+
     // MARK: - Squad profile
 
     func submitSquadMember(
@@ -506,15 +519,40 @@ final class DataStore {
         )
     }
 
-    func approve(collection: String, id: String) async throws {
+    /// Publishes a piece of content, or pulls it back off the board.
+    ///
+    /// Hiding flips `approved` to false, and that — not any client-side filter —
+    /// is what makes it disappear for everyone: the public feeds query
+    /// `approved == true` and the Firestore read rule enforces the same thing,
+    /// so a hidden event or story can't be read by any member, in any audience
+    /// group, on the app or the web. Only organizers and its author still see it.
+    ///
+    /// `hidden` records that an organizer pulled it rather than that it was
+    /// never reviewed, which is what keeps a taken-down item out of the review
+    /// queue instead of sitting there looking like a fresh submission.
+    func setContentPublished(collection: String, id: String, published: Bool) async throws {
         let client = try requireClient()
-        try await client.merge(collection, id, fields: ["approved": .boolean(true)])
+        try await client.merge(collection, id, fields: [
+            "approved": .boolean(published),
+            "hidden": .boolean(!published),
+            "updatedAt": .timestamp(Date()),
+        ])
     }
 
-    /// Rejecting a submission deletes the document, matching `rejectDocument`.
-    func reject(collection: String, id: String) async throws {
+    func approve(collection: String, id: String) async throws {
+        try await setContentPublished(collection: collection, id: id, published: true)
+    }
+
+    /// Deletes a document outright — rejecting a submission, or removing an
+    /// event or Lore story for good. Unlike hiding, this can't be undone.
+    func delete(collection: String, id: String) async throws {
         let client = try requireClient()
         try await client.delete(collection, id)
+    }
+
+    /// Rejecting a submission deletes the document, matching `deleteDocument`.
+    func reject(collection: String, id: String) async throws {
+        try await delete(collection: collection, id: id)
     }
 
     /// Full edit of an event, for the host who submitted it or an admin —
@@ -607,6 +645,9 @@ final class DataStore {
             "bio": .string(bio),
             "email": .string(Audience.normalizeEmail(email)),
             "approved": .boolean(approved),
+            // Kept in step with setContentPublished, so republishing here clears
+            // the "taken down" mark instead of leaving it stale.
+            "hidden": .boolean(!approved),
             "updatedAt": .timestamp(Date()),
         ])
     }

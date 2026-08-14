@@ -49,6 +49,7 @@ function mapEvent(id: string, data: Record<string, unknown>): MeetupEvent {
     status: (data.status as EventStatus) || "confirmed",
     statusNote: String(data.statusNote ?? ""),
     approved: Boolean(data.approved),
+    hidden: Boolean(data.hidden),
     tags: mapTags(data.tags),
     createdBy: data.createdBy ? String(data.createdBy) : undefined,
     createdAt: data.createdAt
@@ -66,6 +67,7 @@ function mapMemory(id: string, data: Record<string, unknown>): Memory {
     date: String(data.date ?? ""),
     text: String(data.text ?? ""),
     approved: Boolean(data.approved),
+    hidden: Boolean(data.hidden),
     createdBy: data.createdBy ? String(data.createdBy) : undefined,
   };
 }
@@ -91,6 +93,7 @@ function mapSquad(id: string, data: Record<string, unknown>): SquadMember {
     photoMimeType: String(data.photoMimeType ?? "image/jpeg"),
     photoUrl: String(data.photoUrl ?? ""),
     approved: Boolean(data.approved),
+    hidden: Boolean(data.hidden),
     createdBy: data.createdBy ? String(data.createdBy) : undefined,
   };
 }
@@ -384,16 +387,50 @@ export async function saveFcmToken(
   );
 }
 
-export async function approveDocument(
-  collectionName: "events" | "memories" | "squad",
+export type ModeratedCollection = "events" | "memories" | "squad";
+
+/**
+ * Publish a piece of content, or pull it back off the board (admin only).
+ *
+ * Hiding flips `approved` to false, and that — not any client-side filter — is
+ * what makes it disappear for everyone: the public feeds query
+ * `approved == true` and the Firestore read rule enforces the same condition,
+ * so a hidden event or story can't be read by any member, in any audience
+ * group, on web or in the iOS app. Only organizers and the author it belongs to
+ * can still see it.
+ *
+ * `hidden` records that an organizer pulled it rather than that it was never
+ * reviewed, which is what keeps a taken-down item out of the review queue
+ * instead of sitting there looking like a fresh submission waiting for a yes.
+ */
+export async function setContentPublished(
+  collectionName: ModeratedCollection,
   id: string,
+  published: boolean,
 ): Promise<void> {
-  await updateDoc(doc(getClientDb(), collectionName, id), { approved: true });
+  await updateDoc(doc(getClientDb(), collectionName, id), {
+    approved: published,
+    hidden: !published,
+    updatedAt: serverTimestamp(),
+  });
 }
 
-/** Reject a pending submission by deleting the document (admin only). */
-export async function rejectDocument(
-  collectionName: "events" | "memories" | "squad",
+/** Approve a pending submission — publishes it on the board. */
+export async function approveDocument(
+  collectionName: ModeratedCollection,
+  id: string,
+): Promise<void> {
+  await setContentPublished(collectionName, id, true);
+}
+
+/**
+ * Delete a document outright (admin only) — rejecting a pending submission,
+ * and removing an event or Lore story for good. Unlike hiding, this can't be
+ * undone; prefer `setContentPublished` when the content may need to come back
+ * or has an open report against it.
+ */
+export async function deleteDocument(
+  collectionName: ModeratedCollection,
   id: string,
 ): Promise<void> {
   await deleteDoc(doc(getClientDb(), collectionName, id));
@@ -605,6 +642,9 @@ export async function adminUpdateSquadMember(
 
   if (typeof fields.approved === "boolean") {
     payload.approved = fields.approved;
+    // Keep the pair in step with setContentPublished, so republishing from the
+    // editor clears the "taken down" mark instead of leaving it stale.
+    payload.hidden = !fields.approved;
   }
   if (fields.photoBase64) {
     payload.photoBase64 = fields.photoBase64;

@@ -43,6 +43,11 @@ struct MeetupEvent: Identifiable, Hashable {
     var status: EventStatus
     var statusNote: String
     var approved: Bool
+    /// Taken down by an organizer. Always paired with `approved == false`, which
+    /// is what actually removes it for every member — this flag only records
+    /// *why*, so the review queue doesn't offer a pulled event back up as a new
+    /// submission. See `DataStore.setContentPublished`.
+    var hidden: Bool
     /// Audience group slugs. Empty = visible to everyone.
     var tags: [String]
     var createdBy: String?
@@ -59,6 +64,7 @@ struct MeetupEvent: Identifiable, Hashable {
         status = EventStatus(rawValue: document.string("status")) ?? .confirmed
         statusNote = document.string("statusNote")
         approved = document.bool("approved")
+        hidden = document.bool("hidden")
         tags = document.stringArray("tags")
         createdBy = document.optionalString("createdBy")
     }
@@ -81,6 +87,8 @@ struct Memory: Identifiable, Hashable {
     var date: String
     var text: String
     var approved: Bool
+    /// Taken down by an organizer — see `MeetupEvent.hidden`.
+    var hidden: Bool
     var createdBy: String?
 
     init(document: FirestoreDocument) {
@@ -90,6 +98,7 @@ struct Memory: Identifiable, Hashable {
         date = document.string("date")
         text = document.string("text")
         approved = document.bool("approved")
+        hidden = document.bool("hidden")
         createdBy = document.optionalString("createdBy")
     }
 }
@@ -112,6 +121,8 @@ struct SquadMember: Identifiable, Hashable {
     var photoMimeType: String
     var photoUrl: String
     var approved: Bool
+    /// Taken down by an organizer — see `MeetupEvent.hidden`.
+    var hidden: Bool
 
     init(document: FirestoreDocument) {
         id = document.id
@@ -129,6 +140,7 @@ struct SquadMember: Identifiable, Hashable {
         photoMimeType = mime.isEmpty ? "image/jpeg" : mime
         photoUrl = document.string("photoUrl")
         approved = document.bool("approved")
+        hidden = document.bool("hidden")
     }
 }
 

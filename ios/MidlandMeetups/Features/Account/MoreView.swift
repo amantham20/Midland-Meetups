@@ -45,9 +45,9 @@ struct MoreView: View {
                     }
                 }
 
-                // Every event, story and profile carries its own Report action;
-                // this is the address that always works, whatever screen the
-                // content was on.
+                // Events and Lore stories carry their own Report action; this is
+                // the one that always works, whatever screen the content was on
+                // — and the only way to report a member or their profile.
                 Button {
                     isReporting = true
                 } label: {
