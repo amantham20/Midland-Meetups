@@ -30,15 +30,15 @@ Sign in from the More tab > Sign in. No account is needed to browse the app;
 sign-in is required only to RSVP, post content, or moderate.
 
 1) SCREEN RECORDING
-Attached. Recorded on <DEVICE>, iOS <VERSION>, beginning with app launch. It covers
-the full flow: launch, browsing signed out, the calendar permission prompt, account
-registration, sign-in, RSVP, submitting user-generated content, organizer moderation
-of that content, and account deletion.
+Attached. Recorded on an iPhone 15 Pro Max running iOS 27, beginning with app launch.
+It covers the full flow: launch, browsing signed out, the calendar permission prompt,
+account registration, sign-in, RSVP, submitting user-generated content, organizer
+moderation of that content, and account deletion.
 
 2) DEVICES AND OS VERSIONS TESTED
-<e.g. iPhone 17 Pro (iOS 26.x), iPhone 14 (iOS 26.x), iPad Air 11-inch M3 (iPadOS
-26.x)>. Minimum supported version is iOS 17.0. The app is universal: iPhone is
-portrait-only, iPad supports all orientations.
+iPhone 15 Pro Max (iOS 27) and iPhone 16 Pro (iOS 26), both physical devices. The
+minimum supported version is iOS 17.0. The app is universal: iPhone is portrait-only,
+iPad supports all orientations.
 
 3) WHAT THE APP DOES, AND FOR WHOM
 Midland Meetups is a free, ad-free community bulletin board for a local friend group
@@ -136,8 +136,10 @@ The reply above runs past the Notes field's 4,000-character cap. Paste this cond
 version there instead — it carries the same seven answers and is what Apple asked you
 to keep on file for future submissions.
 
-It sits at 3,981 characters with the placeholders still in, so keep what you
-substitute short — a long device list will push it over the cap.
+It sits at 3,873 characters with eight placeholders still in. Substituting real
+values for those (two emails, two passwords, a group name, a report path, and the
+site URL twice) will add roughly 100, landing near 3,975 — so keep what you type
+short and re-count if you add anything.
 
 ```
 MIDLAND MEETUPS — APP REVIEW NOTES
@@ -146,34 +148,33 @@ DEMO ACCOUNTS (two account types)
 Standard member — <EMAIL> / <PASSWORD>
 Organizer/admin — <EMAIL> / <PASSWORD>
 Browsing needs no account; sign-in (More > Sign in) is only needed to RSVP, post, or
-moderate. Both accounts are in audience group <GROUP>, so restricted events are
-visible to them.
+moderate. Both are in audience group <GROUP>, so restricted events show.
 
 1) RECORDING: attached with this submission, from app launch.
-2) TESTED ON: <DEVICES AND OS>. Minimum iOS 17.0. Universal: iPhone portrait-only,
-iPad all orientations.
+2) TESTED ON: iPhone 15 Pro Max (iOS 27), iPhone 16 Pro (iOS 26), both physical.
+Minimum iOS 17.0. Universal: iPhone portrait-only, iPad all orientations.
 
-3) WHAT IT IS. A free, ad-free community bulletin board for a local friend group in
+3) WHAT IT IS. A free, ad-free community bulletin board for a friend group in
 Midland, Michigan, USA. It replaces scattered group texts, where people missed
-get-togethers and nobody knew who was coming, with one shared board for the week's
-plans, who is coming, and the group's history. Audience: adults in that local social
-circle; general-audience content. No paid content, purchases, or subscriptions.
+get-togethers and nobody knew who was coming, with one board for the week's plans,
+who is coming, and the group's history. Audience: adults in that local social circle;
+general-audience content. No paid content, purchases, or subscriptions.
 
 4) FEATURES. No setup, configuration, or sample files. Happenings loads at launch,
 signed out.
 - Happenings: next seven days plus a status ticker. Tap an event for detail. "Add to
-Calendar" saves it to the device calendar — the app's only permission prompt
-(write-only; existing events are never read). RSVP buttons need sign-in.
-- RSVPs: who is coming to each upcoming and past event.
-- Lore: member-written stories; "Add to the Letter" submits one (sign-in needed).
+Calendar" is the app's only permission prompt (write-only; existing events are never
+read). RSVP buttons need sign-in.
+- RSVPs: who is coming to each event, upcoming and past.
+- Lore: member-written stories; "Add to the Letter" submits one.
 - Squad: member directory; join or edit your profile, optional photo via the system
 picker (no permission prompt).
-- More: Submit an Event, your own submissions (editable), Game (opens Safari), Sign
+- More: Submit an Event, your submissions (editable), Game (opens Safari), Sign
 in/out, Delete account, and — organizer only — the Admin queue: approve or delete
-pending events, stories and profiles, edit any event, manage audience groups.
+pending submissions, edit any event, manage audience groups.
 End to end: as the member, More > Submit an Event > Send Submission — it reads
-"Awaiting approval" and is invisible to everyone else. As the organizer, More >
-Admin queue > Approve — it appears on Happenings.
+"Awaiting approval" and is invisible to everyone else. As the organizer, More > Admin
+queue > Approve — it appears on Happenings.
 
 ACCOUNTS. Register and sign in at More > Sign in. Delete in-app at More > Delete
 account, behind a confirmation alert: it deletes the Auth user, the squad profile and
@@ -191,15 +192,14 @@ hey@amantham.com. Terms: <SITE URL>/terms. Privacy: <SITE URL>/privacy.
 account deletion via the Identity Toolkit REST API — the only auth service. Cloud
 Firestore (Google), the only datastore (events, RSVPs, stories, profiles, groups),
 via the Firestore REST API, access enforced by Security Rules. Apple EventKit,
-on-device and write-only, for "Add to Calendar". The app bundles no third-party SDKs
-or dependencies: no payment processor, ads, attribution, analytics, AI, or data
-providers. The "Game" link opens a public web page in Safari.
+on-device and write-only, for "Add to Calendar". No third-party SDKs or dependencies:
+no payment processor, ads, attribution, analytics, AI, or data providers. "Game"
+opens a public web page in Safari.
 
 6) REGIONS. Identical features and content in every region and storefront, English
 only. No geo-gating, no region-specific content or pricing, no location detection or
-permission. Dates and times use the device's locale and time zone. Events are in
-Midland, Michigan, so the content is of local interest, but nothing behaves
-differently by region.
+permission. Dates and times use the device's locale and time zone. Content is about
+Midland, Michigan events, but nothing behaves differently by region.
 
 7) REGULATED INDUSTRY / PROTECTED MATERIAL. None. No health, financial, gambling,
 dating, alcohol, or licensed-credential features. All content is created by the app's

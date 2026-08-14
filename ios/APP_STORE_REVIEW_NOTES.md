@@ -34,9 +34,12 @@ permission prompt. Suggested take, in order:
 8. More → **Delete account** → the confirmation alert → the account is gone and the
    app drops back to signed out. Use a throwaway account for this take.
 
-**The device/OS list (item 2)** and **the site URL** for the privacy and terms links.
-The deployed domain is not committed anywhere in the repo, so I left it as a
-placeholder in two spots.
+**The site URL** for the privacy and terms links. The deployed domain is not
+committed anywhere in the repo, so it is still a placeholder in two spots.
+
+**Item 2 is filled in:** iPhone 15 Pro Max (iOS 27) and iPhone 16 Pro (iOS 26), both
+physical devices. See gap #5 — that list is iPhone-only while the app still ships as
+universal.
 
 **Demo credentials for both account types.** Create them fresh rather than reusing a
 real member's account — a reviewer will post test content and approve/delete things.
