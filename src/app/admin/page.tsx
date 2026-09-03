@@ -19,7 +19,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import {
   approveDocument,
+  deleteGoal,
   deleteGroup,
+  deleteIdea,
   deleteReport,
   fetchAllForAdmin,
   isAdminClaimEndpointConfigured,
@@ -34,6 +36,8 @@ import { normalizeEmail } from "@/lib/audience";
 import {
   REPORT_TARGET_COLLECTION,
   type AudienceGroup,
+  type EventIdea,
+  type GroupGoal,
   type MeetupEvent,
   type Memory,
   type Report,
@@ -82,6 +86,9 @@ export default function AdminPage() {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [squad, setSquad] = useState<SquadMember[]>([]);
   const [groups, setGroups] = useState<AudienceGroup[]>([]);
+  /** Board rows, kept only so reports filed against them can be acted on. */
+  const [ideas, setIdeas] = useState<EventIdea[]>([]);
+  const [goals, setGoals] = useState<GroupGoal[]>([]);
   /** null while unread — the reports rules may not be deployed yet. */
   const [reports, setReports] = useState<Report[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -112,12 +119,16 @@ export default function AdminPage() {
       memories: Memory[];
       squad: SquadMember[];
       groups: AudienceGroup[];
+      ideas: EventIdea[];
+      goals: GroupGoal[];
       reports: Report[] | null;
     }) => {
       setEvents(data.events);
       setMemories(data.memories);
       setSquad(data.squad);
       setGroups(data.groups);
+      setIdeas(data.ideas);
+      setGoals(data.goals);
       setReports(data.reports);
       setError(null);
       setAccessDenied(false);
@@ -205,8 +216,10 @@ export default function AdminPage() {
         ...events.map((e) => e.id),
         ...memories.map((m) => m.id),
         ...squad.map((s) => s.id),
+        ...ideas.map((i) => i.id),
+        ...goals.map((g) => g.id),
       ]),
-    [events, memories, squad],
+    [events, memories, squad, ideas, goals],
   );
 
   const squadSorted = useMemo(
@@ -302,7 +315,15 @@ export default function AdminPage() {
       return;
     setBusyId(report.id);
     try {
-      await rejectDocument(collectionName, report.targetId);
+      // Board rows own rows of their own — an idea's interest votes, a goal's
+      // logged entries — so those go through the cascading delete.
+      if (collectionName === "ideas") {
+        await deleteIdea(report.targetId);
+      } else if (collectionName === "goals") {
+        await deleteGoal(report.targetId);
+      } else {
+        await rejectDocument(collectionName, report.targetId);
+      }
       await setReportStatus(report.id, "reviewed");
       await load();
       toast.success("Content deleted and the report marked reviewed.");

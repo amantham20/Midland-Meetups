@@ -16,6 +16,8 @@ Progressive Web App rewrite of the Midland Meetups bulletin board.
 | Happenings (next 7 days) | Firestore `events` + live `onSnapshot` |
 | Event status ticker | Same events feed (`rain-delay` / `canceled` / `relocated`) |
 | RSVP + directory | Firestore `rsvps` (one doc per user × event) |
+| Idea board | Firestore `ideas` + `ideaVotes` — members-only, `/ideas` |
+| Group goals | Firestore `goals` + `goalLogs` — members-only, `/goals` |
 | The Lore Letter | Firestore `memories` + submission form |
 | The Squad | Firestore `squad` + inline compressed base64 photos (no Storage) |
 | Submit an Event | Auth-gated form (replaces plaintext `SUBMIT_PASSWORD`) |
@@ -23,7 +25,7 @@ Progressive Web App rewrite of the Midland Meetups bulletin board.
 | Tag a host | Pick a squad member instead of typing a name — they can then edit the event too |
 | Edit your own events | Submitter and tagged host edit from `/submit` or the event dialog; admins edit any event from `/admin` → Events |
 | Sign-in | Firebase Auth — Email/Password |
-| Report content or a user | Firestore `reports` — a Report action on every event, story and profile, plus `/report` (web) and More → Report (iOS) |
+| Report content or a user | Firestore `reports` — a Report action on every event, story, profile, idea and goal, plus `/report` (web) and More → Report (iOS) |
 | Admin queue | `/admin` — approve/reject + edit any event end to end, and work the report queue (bootstrap UID and/or admin claim) |
 | PWA install | Web App Manifest + service worker via next-pwa |
 | Event reminders | FCM tokens + Next.js `/api/cron/reminders` (Vercel Cron or any external cron) |
@@ -168,6 +170,66 @@ own event — rules pin every other field, so a host can't self-approve one or
 take it over from the account that submitted it. Admins edit anything, on any
 event, from **Admin → Events**.
 
+### `ideas/{id}` — the idea board
+
+| Field | Type | Notes |
+|-------|------|--------|
+| title | string | the pitch's headline, ≤ 140 chars |
+| pitch | string | what it is and why, ≤ 2,000 chars |
+| timeframe | string | loose "when" — `"any Saturday"`; not a date |
+| proposedBy | string | display name of whoever posted it |
+| status | string | `open` \| `planned` \| `parked` |
+| eventId | string | the event it became; `""` until it's scheduled |
+| createdBy | string | Auth UID — who may edit, park or delete it |
+| createdAt, updatedAt | timestamp | |
+
+**Members-only, read and write** — nothing on this board is public, so ideas
+skip the approval queue events go through. The author edits, parks and deletes
+their own; admins can do all of it on anyone's.
+
+**Scheduling an idea** files an ordinary event submission (same approval queue
+as `/submit`) and then flips the idea to `planned` with a link to the new event.
+Any member may do that to an *open* idea — the rules allow exactly that
+transition for a non-author and nothing else, so the pitch itself stays with
+whoever wrote it.
+
+### `ideaVotes/{userId}_{ideaId}`
+
+`ideaId`, `userId`, `name`, `updatedAt` — one "I'd go" per member per idea, the
+same shape as an RSVP. Interest counts are summed in the client, so there is no
+tally on the idea document to drift.
+
+### `goals/{id}` — group goals
+
+| Field | Type | Notes |
+|-------|------|--------|
+| title | string | e.g. "Group marathon", ≤ 140 chars |
+| description | string | what counts and how to log it, ≤ 2,000 chars |
+| unit | string | what's being counted: `miles`, `books`, `push-ups` |
+| target | number | how much of `unit` the group is going for, together |
+| deadline | string | `YYYY-MM-DD`, or `""` for open-ended |
+| status | string | `active` \| `archived` |
+| createdBy, createdByName | string | Auth UID + display name of who started it |
+| createdAt, updatedAt | timestamp | |
+
+Members-only like the idea board. The goal holds the target; the running total
+is the **sum of its `goalLogs`**, so nothing on the goal document has to be kept
+in sync and two people logging at the same time can't clobber each other. A goal
+is "hit" when the total reaches the target — that's derived, not stored.
+
+Archiving retires a goal and keeps the record; deleting it removes every entry
+logged against it (the client clears the logs first, because the rule that lets
+a goal's owner remove someone else's entry reads the parent goal).
+
+### `goalLogs/{id}`
+
+`goalId`, `userId`, `name`, `amount` (number > 0), `note` (≤ 280 chars), `date`
+(`YYYY-MM-DD`), `createdAt`
+
+One row per contribution, many per person per goal. A member writes only their
+own; entries are never edited — a wrong one is removed and logged again. The
+owner of the goal and admins can remove any entry.
+
 ### `memories/{id}`
 
 `title`, `author`, `date`, `text`, `approved`, `createdBy`
@@ -188,7 +250,7 @@ Photos are **not** in Cloud Storage. The browser compresses to ~320px JPEG and s
 
 | Field | Type | Notes |
 |-------|------|--------|
-| targetType | string | `event` \| `memory` \| `member` \| `other` (`other` = the general form) |
+| targetType | string | `event` \| `memory` \| `member` \| `idea` \| `goal` \| `other` (`other` = the general form) |
 | targetId | string | document id of the reported content; `""` for a general report |
 | targetLabel | string | title/name captured when filed, so the queue still reads after a delete |
 | reason | string | `harassment`, `hate`, `sexual`, `violence`, `spam`, `impersonation`, `illegal`, `other` |
@@ -288,6 +350,7 @@ xcodebuild -project ios/MidlandMeetups.xcodeproj -scheme MidlandMeetups -destina
 |----------|-----|
 | `/` Happenings | Happenings tab — next 7 days, status ticker, event detail with RSVP and (for the host) Edit |
 | `/rsvps` | RSVPs tab — upcoming / past, going and can't-make-it lists |
+| `/ideas`, `/goals` | **Not in the iOS app yet** — the member boards are web-only |
 | `/lore` | Lore tab — archive + submit a memory |
 | `/squad` | Squad tab — member grid, join/edit your profile with a photo picker |
 | `/submit` | More → Submit an Event, your own submissions with Edit, and the **+** on Happenings |
@@ -311,6 +374,11 @@ pull-to-refresh.
 - **Admin email → uid linking is web-only.** That path calls a `firebase-admin`
   Next.js route, and the app has no server. Squad ownership in `firestore.rules` is
   matched by email, so admin editing works regardless.
+- **No idea board or group goals.** `/ideas` and `/goals` haven't been ported;
+  the rules and data model are shared, so an iOS build can pick them up later.
+  Account deletion in the app doesn't clear a member's ideas, interest votes,
+  goals or logged entries yet — the rules already allow it, the Swift
+  `DataStore` cleanup just doesn't cover those collections.
 
 ---
 

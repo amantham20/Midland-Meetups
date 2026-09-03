@@ -18,6 +18,12 @@ import {
 import { getClientDb } from "./client";
 import type {
   AudienceGroup,
+  EventIdea,
+  GoalLog,
+  GoalStatus,
+  GroupGoal,
+  IdeaStatus,
+  IdeaVote,
   MeetupEvent,
   Memory,
   Report,
@@ -139,6 +145,68 @@ function mapRsvp(id: string, data: Record<string, unknown>): Rsvp {
     updatedAt: data.updatedAt
       ? String((data.updatedAt as { toDate?: () => Date }).toDate?.() ?? data.updatedAt)
       : "",
+  };
+}
+
+/** Firestore Timestamp → ISO string, so board rows sort lexicographically. */
+function mapTimestamp(raw: unknown): string {
+  if (!raw) return "";
+  return (
+    (raw as { toDate?: () => Date }).toDate?.()?.toISOString() ?? String(raw)
+  );
+}
+
+function mapIdea(id: string, data: Record<string, unknown>): EventIdea {
+  return {
+    id,
+    title: String(data.title ?? ""),
+    pitch: String(data.pitch ?? ""),
+    timeframe: String(data.timeframe ?? ""),
+    proposedBy: String(data.proposedBy ?? ""),
+    status: (data.status as IdeaStatus) || "open",
+    eventId: String(data.eventId ?? ""),
+    createdBy: String(data.createdBy ?? ""),
+    createdAt: mapTimestamp(data.createdAt),
+    updatedAt: mapTimestamp(data.updatedAt),
+  };
+}
+
+function mapIdeaVote(id: string, data: Record<string, unknown>): IdeaVote {
+  return {
+    id,
+    ideaId: String(data.ideaId ?? ""),
+    userId: String(data.userId ?? ""),
+    name: String(data.name ?? ""),
+    updatedAt: mapTimestamp(data.updatedAt),
+  };
+}
+
+function mapGoal(id: string, data: Record<string, unknown>): GroupGoal {
+  return {
+    id,
+    title: String(data.title ?? ""),
+    description: String(data.description ?? ""),
+    unit: String(data.unit ?? ""),
+    target: Number(data.target ?? 0) || 0,
+    deadline: String(data.deadline ?? ""),
+    status: data.status === "archived" ? "archived" : "active",
+    createdBy: String(data.createdBy ?? ""),
+    createdByName: String(data.createdByName ?? ""),
+    createdAt: mapTimestamp(data.createdAt),
+    updatedAt: mapTimestamp(data.updatedAt),
+  };
+}
+
+function mapGoalLog(id: string, data: Record<string, unknown>): GoalLog {
+  return {
+    id,
+    goalId: String(data.goalId ?? ""),
+    userId: String(data.userId ?? ""),
+    name: String(data.name ?? ""),
+    amount: Number(data.amount ?? 0) || 0,
+    note: String(data.note ?? ""),
+    date: String(data.date ?? ""),
+    createdAt: mapTimestamp(data.createdAt),
   };
 }
 
@@ -276,8 +344,8 @@ export async function submitEvent(input: {
   description: string;
   userId: string;
   tags?: string[];
-}): Promise<void> {
-  await addDoc(collection(getClientDb(), "events"), {
+}): Promise<string> {
+  const ref = await addDoc(collection(getClientDb(), "events"), {
     title: input.title,
     host: input.host,
     hostUserId: input.hostUserId || "",
@@ -293,6 +361,7 @@ export async function submitEvent(input: {
     createdBy: input.userId,
     createdAt: serverTimestamp(),
   });
+  return ref.id;
 }
 
 export async function submitMemory(input: {
@@ -391,9 +460,12 @@ export async function approveDocument(
   await updateDoc(doc(getClientDb(), collectionName, id), { approved: true });
 }
 
-/** Reject a pending submission by deleting the document (admin only). */
+/**
+ * Delete a document outright (admin only) — rejecting a pending submission, or
+ * clearing out something a report pointed at.
+ */
 export async function rejectDocument(
-  collectionName: "events" | "memories" | "squad",
+  collectionName: "events" | "memories" | "squad" | "ideas" | "goals",
   id: string,
 ): Promise<void> {
   await deleteDoc(doc(getClientDb(), collectionName, id));
@@ -687,6 +759,296 @@ export async function findEditableSquadProfile(
   return member;
 }
 
+/* ——————————————————————— The idea board ———————————————————————
+ *
+ * Ideas and their interest votes are members-only (see firestore.rules), and
+ * neither collection is big enough to page: the whole thing is subscribed and
+ * sorted in the client, the way `rsvps` already works. That also keeps the
+ * queries index-free.
+ */
+
+export function subscribeIdeas(
+  onData: (ideas: EventIdea[]) => void,
+  onError?: (err: Error) => void,
+): Unsubscribe {
+  return onSnapshot(
+    collection(getClientDb(), "ideas"),
+    (snap) => {
+      onData(snap.docs.map((d) => mapIdea(d.id, d.data())));
+    },
+    (err) => onError?.(err),
+  );
+}
+
+export function subscribeIdeaVotes(
+  onData: (votes: IdeaVote[]) => void,
+  onError?: (err: Error) => void,
+): Unsubscribe {
+  return onSnapshot(
+    collection(getClientDb(), "ideaVotes"),
+    (snap) => {
+      onData(snap.docs.map((d) => mapIdeaVote(d.id, d.data())));
+    },
+    (err) => onError?.(err),
+  );
+}
+
+export async function submitIdea(input: {
+  title: string;
+  pitch: string;
+  timeframe: string;
+  proposedBy: string;
+  userId: string;
+}): Promise<string> {
+  const ref = await addDoc(collection(getClientDb(), "ideas"), {
+    title: input.title.trim(),
+    pitch: input.pitch.trim(),
+    timeframe: input.timeframe.trim(),
+    proposedBy: input.proposedBy.trim(),
+    status: "open",
+    eventId: "",
+    createdBy: input.userId,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export type IdeaFields = {
+  title: string;
+  pitch: string;
+  timeframe: string;
+};
+
+/** Edit the pitch itself. Author or admin only (rules). */
+export async function updateIdea(
+  ideaId: string,
+  fields: IdeaFields,
+): Promise<void> {
+  await updateDoc(doc(getClientDb(), "ideas", ideaId), {
+    title: fields.title.trim(),
+    pitch: fields.pitch.trim(),
+    timeframe: fields.timeframe.trim(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/** Park an idea for later, or bring a parked one back. Author or admin. */
+export async function setIdeaStatus(
+  ideaId: string,
+  status: IdeaStatus,
+): Promise<void> {
+  await updateDoc(doc(getClientDb(), "ideas", ideaId), {
+    status,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/** One "I'd go" per member per idea: `ideaVotes/{userId}_{ideaId}`. */
+export async function setIdeaInterest(input: {
+  ideaId: string;
+  userId: string;
+  name: string;
+  interested: boolean;
+}): Promise<void> {
+  const ref = doc(
+    getClientDb(),
+    "ideaVotes",
+    `${input.userId}_${input.ideaId}`,
+  );
+  if (!input.interested) {
+    await deleteDoc(ref);
+    return;
+  }
+  await setDoc(ref, {
+    ideaId: input.ideaId,
+    userId: input.userId,
+    name: input.name,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Delete an idea and the votes hanging off it.
+ *
+ * Votes go first: the rule that lets an idea's author clear someone else's vote
+ * reads the parent idea, so it can't be evaluated once the idea is gone.
+ */
+export async function deleteIdea(ideaId: string): Promise<void> {
+  const db = getClientDb();
+  const votes = await getDocs(
+    query(collection(db, "ideaVotes"), where("ideaId", "==", ideaId)),
+  );
+  await Promise.all(votes.docs.map((d) => deleteDoc(d.ref)));
+  await deleteDoc(doc(db, "ideas", ideaId));
+}
+
+/**
+ * Turn an idea into a real event submission.
+ *
+ * The event goes through the same approval queue as anything sent from
+ * `/submit` — scheduling an idea doesn't put anything on the public board on
+ * its own. The idea is then marked `planned` and keeps a link to the event, so
+ * the board can show where it went. Any member may schedule an open idea; the
+ * rules allow exactly that transition and nothing else for non-authors.
+ */
+export async function scheduleIdeaAsEvent(input: {
+  ideaId: string;
+  title: string;
+  host: string;
+  hostUserId?: string;
+  date: string;
+  time: string;
+  location: string;
+  description: string;
+  userId: string;
+  tags?: string[];
+}): Promise<string> {
+  const eventId = await submitEvent({
+    title: input.title,
+    host: input.host,
+    hostUserId: input.hostUserId,
+    date: input.date,
+    time: input.time,
+    location: input.location,
+    description: input.description,
+    userId: input.userId,
+    tags: input.tags,
+  });
+  await updateDoc(doc(getClientDb(), "ideas", input.ideaId), {
+    status: "planned",
+    eventId,
+    updatedAt: serverTimestamp(),
+  });
+  return eventId;
+}
+
+/* ——————————————————————— The goals board ———————————————————————
+ *
+ * A goal holds the target; the running total is the sum of its logs, so there
+ * is no counter on the goal document to keep in sync and two people logging at
+ * once can't clobber each other.
+ */
+
+export function subscribeGoals(
+  onData: (goals: GroupGoal[]) => void,
+  onError?: (err: Error) => void,
+): Unsubscribe {
+  return onSnapshot(
+    collection(getClientDb(), "goals"),
+    (snap) => {
+      onData(snap.docs.map((d) => mapGoal(d.id, d.data())));
+    },
+    (err) => onError?.(err),
+  );
+}
+
+export function subscribeGoalLogs(
+  onData: (logs: GoalLog[]) => void,
+  onError?: (err: Error) => void,
+): Unsubscribe {
+  return onSnapshot(
+    collection(getClientDb(), "goalLogs"),
+    (snap) => {
+      onData(snap.docs.map((d) => mapGoalLog(d.id, d.data())));
+    },
+    (err) => onError?.(err),
+  );
+}
+
+export type GoalFields = {
+  title: string;
+  description: string;
+  unit: string;
+  target: number;
+  deadline: string;
+};
+
+export async function submitGoal(
+  input: GoalFields & { userId: string; createdByName: string },
+): Promise<string> {
+  const ref = await addDoc(collection(getClientDb(), "goals"), {
+    title: input.title.trim(),
+    description: input.description.trim(),
+    unit: input.unit.trim(),
+    target: Number(input.target) || 0,
+    deadline: input.deadline.trim(),
+    status: "active",
+    createdBy: input.userId,
+    createdByName: input.createdByName.trim(),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+/** Edit a goal's target and copy. Owner or admin only (rules). */
+export async function updateGoalDetails(
+  goalId: string,
+  fields: GoalFields,
+): Promise<void> {
+  await updateDoc(doc(getClientDb(), "goals", goalId), {
+    title: fields.title.trim(),
+    description: fields.description.trim(),
+    unit: fields.unit.trim(),
+    target: Number(fields.target) || 0,
+    deadline: fields.deadline.trim(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/** Retire a finished goal without losing what everyone put in, or revive it. */
+export async function setGoalStatus(
+  goalId: string,
+  status: GoalStatus,
+): Promise<void> {
+  await updateDoc(doc(getClientDb(), "goals", goalId), {
+    status,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function addGoalLog(input: {
+  goalId: string;
+  userId: string;
+  name: string;
+  amount: number;
+  note: string;
+  date: string;
+}): Promise<void> {
+  await addDoc(collection(getClientDb(), "goalLogs"), {
+    goalId: input.goalId,
+    userId: input.userId,
+    name: input.name.trim(),
+    amount: Number(input.amount),
+    note: input.note.trim().slice(0, 280),
+    date: input.date,
+    createdAt: serverTimestamp(),
+  });
+}
+
+/** Take back something you logged. Your own logs, or an admin's call. */
+export async function deleteGoalLog(logId: string): Promise<void> {
+  await deleteDoc(doc(getClientDb(), "goalLogs", logId));
+}
+
+/**
+ * Delete a goal and everything logged against it. Logs go first, for the same
+ * reason idea votes do — the rule that lets a goal's owner clear someone else's
+ * log reads the parent goal.
+ *
+ * Archiving is the gentler option and what the board offers first; this is for
+ * a goal that shouldn't have existed.
+ */
+export async function deleteGoal(goalId: string): Promise<void> {
+  const db = getClientDb();
+  const logs = await getDocs(
+    query(collection(db, "goalLogs"), where("goalId", "==", goalId)),
+  );
+  await Promise.all(logs.docs.map((d) => deleteDoc(d.ref)));
+  await deleteDoc(doc(db, "goals", goalId));
+}
+
 export function subscribeGroups(
   onData: (groups: AudienceGroup[]) => void,
   onError?: (err: Error) => void,
@@ -742,22 +1104,40 @@ export async function fetchAllForAdmin(): Promise<{
   memories: Memory[];
   squad: SquadMember[];
   groups: AudienceGroup[];
+  /** Board rows, so a report filed against one can still be acted on. */
+  ideas: EventIdea[];
+  goals: GroupGoal[];
   /** null when the reports collection can't be read — not the same as empty. */
   reports: Report[] | null;
 }> {
-  const [eventsSnap, memoriesSnap, squadSnap, groupsSnap, reportsSnap] =
-    await Promise.all([
-      getDocs(collection(getClientDb(), "events")),
-      getDocs(collection(getClientDb(), "memories")),
-      getDocs(collection(getClientDb(), "squad")),
-      getDocs(collection(getClientDb(), "groups")),
-      // Deployments whose rules predate the reports collection must still get
-      // their queue, so this one read is allowed to come back empty-handed.
-      getDocs(collection(getClientDb(), "reports")).catch((err) => {
-        console.warn("Could not read reports", err);
-        return null;
-      }),
-    ]);
+  /**
+   * A deployment whose rules predate a collection must still get the rest of
+   * the page, so these reads are allowed to come back empty-handed.
+   */
+  function optional(name: string) {
+    return getDocs(collection(getClientDb(), name)).catch((err) => {
+      console.warn(`Could not read ${name}`, err);
+      return null;
+    });
+  }
+
+  const [
+    eventsSnap,
+    memoriesSnap,
+    squadSnap,
+    groupsSnap,
+    ideasSnap,
+    goalsSnap,
+    reportsSnap,
+  ] = await Promise.all([
+    getDocs(collection(getClientDb(), "events")),
+    getDocs(collection(getClientDb(), "memories")),
+    getDocs(collection(getClientDb(), "squad")),
+    getDocs(collection(getClientDb(), "groups")),
+    optional("ideas"),
+    optional("goals"),
+    optional("reports"),
+  ]);
   return {
     events: eventsSnap.docs.map((d) => mapEvent(d.id, d.data())),
     memories: memoriesSnap.docs.map((d) => mapMemory(d.id, d.data())),
@@ -765,6 +1145,8 @@ export async function fetchAllForAdmin(): Promise<{
     groups: groupsSnap.docs
       .map((d) => mapGroup(d.id, d.data()))
       .sort((a, b) => a.name.localeCompare(b.name)),
+    ideas: ideasSnap?.docs.map((d) => mapIdea(d.id, d.data())) ?? [],
+    goals: goalsSnap?.docs.map((d) => mapGoal(d.id, d.data())) ?? [],
     reports:
       reportsSnap?.docs
         .map((d) => mapReport(d.id, d.data()))

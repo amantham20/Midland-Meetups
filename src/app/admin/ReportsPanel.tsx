@@ -134,7 +134,7 @@ export function ReportsPanel({
   /** null when the collection couldn't be read — not the same as empty. */
   reports: Report[] | null;
   busyId: string | null;
-  /** Ids of every event, memory and profile still on file. */
+  /** Ids of every event, memory, profile, idea and goal still on file. */
   liveTargetIds: Set<string>;
   onSetStatus: (id: string, status: "open" | "reviewed") => void;
   onDeleteContent: (report: Report) => void;
