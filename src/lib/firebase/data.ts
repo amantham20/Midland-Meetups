@@ -9,6 +9,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -333,7 +334,7 @@ export function subscribeApprovedSquad(
   );
 }
 
-export async function submitEvent(input: {
+export type EventSubmission = {
   title: string;
   host: string;
   /** Auth uid when the host was tagged from the squad; "" for a typed name. */
@@ -344,8 +345,15 @@ export async function submitEvent(input: {
   description: string;
   userId: string;
   tags?: string[];
-}): Promise<string> {
-  const ref = await addDoc(collection(getClientDb(), "events"), {
+};
+
+/**
+ * The document a new event submission writes. Shared by `/submit` and by
+ * scheduling an idea, which files the same thing inside a transaction — the
+ * create rule checks every key here, so the two can't drift apart.
+ */
+function newEventFields(input: EventSubmission): Record<string, unknown> {
+  return {
     title: input.title,
     host: input.host,
     hostUserId: input.hostUserId || "",
@@ -360,7 +368,14 @@ export async function submitEvent(input: {
     tags: input.tags || [],
     createdBy: input.userId,
     createdAt: serverTimestamp(),
-  });
+  };
+}
+
+export async function submitEvent(input: EventSubmission): Promise<string> {
+  const ref = await addDoc(
+    collection(getClientDb(), "events"),
+    newEventFields(input),
+  );
   return ref.id;
 }
 
@@ -884,6 +899,18 @@ export async function deleteIdea(ideaId: string): Promise<void> {
 }
 
 /**
+ * An idea can only be scheduled once. Thrown when someone else got there first
+ * (or the idea has since been deleted) — the message is written for the member
+ * looking at a stale board, and the page shows it as-is.
+ */
+export class IdeaNotSchedulableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "IdeaNotSchedulableError";
+  }
+}
+
+/**
  * Turn an idea into a real event submission.
  *
  * The event goes through the same approval queue as anything sent from
@@ -891,36 +918,44 @@ export async function deleteIdea(ideaId: string): Promise<void> {
  * its own. The idea is then marked `planned` and keeps a link to the event, so
  * the board can show where it went. Any member may schedule an open idea; the
  * rules allow exactly that transition and nothing else for non-authors.
+ *
+ * Both writes go in one transaction against an event id allocated up front. Two
+ * people scheduling the same idea at once would otherwise leave the loser's
+ * event sitting unlinked in the approval queue — the create had already
+ * committed by the time the idea update was rejected — and an author could
+ * overwrite `eventId` and orphan the first one. Now the loser's event is never
+ * written, and they're told to reload rather than invited to retry.
  */
-export async function scheduleIdeaAsEvent(input: {
-  ideaId: string;
-  title: string;
-  host: string;
-  hostUserId?: string;
-  date: string;
-  time: string;
-  location: string;
-  description: string;
-  userId: string;
-  tags?: string[];
-}): Promise<string> {
-  const eventId = await submitEvent({
-    title: input.title,
-    host: input.host,
-    hostUserId: input.hostUserId,
-    date: input.date,
-    time: input.time,
-    location: input.location,
-    description: input.description,
-    userId: input.userId,
-    tags: input.tags,
+export async function scheduleIdeaAsEvent(
+  input: EventSubmission & { ideaId: string },
+): Promise<string> {
+  const db = getClientDb();
+  const ideaRef = doc(db, "ideas", input.ideaId);
+  // Allocated, not written: `doc()` on a collection only mints an id, so the
+  // event and the idea's link to it can be committed together below.
+  const eventRef = doc(collection(db, "events"));
+
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ideaRef);
+    if (!snap.exists()) {
+      throw new IdeaNotSchedulableError(
+        "That idea isn't on the board any more.",
+      );
+    }
+    if (snap.data().status === "planned") {
+      throw new IdeaNotSchedulableError(
+        "Someone just scheduled that one. Reload the board to see it.",
+      );
+    }
+    tx.set(eventRef, newEventFields(input));
+    tx.update(ideaRef, {
+      status: "planned",
+      eventId: eventRef.id,
+      updatedAt: serverTimestamp(),
+    });
   });
-  await updateDoc(doc(getClientDb(), "ideas", input.ideaId), {
-    status: "planned",
-    eventId,
-    updatedAt: serverTimestamp(),
-  });
-  return eventId;
+
+  return eventRef.id;
 }
 
 /* ——————————————————————— The goals board ———————————————————————

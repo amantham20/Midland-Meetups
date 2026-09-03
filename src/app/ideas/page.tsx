@@ -20,6 +20,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import {
   deleteIdea,
+  IdeaNotSchedulableError,
   scheduleIdeaAsEvent,
   setIdeaInterest,
   setIdeaStatus,
@@ -182,7 +183,14 @@ export default function IdeasPage() {
       );
     } catch (err) {
       console.error(err);
-      toast.error("Couldn't schedule that one. Try again.");
+      // Someone else got there first — a retry can't help, so say what happened
+      // rather than offering the generic "try again".
+      toast.error(
+        err instanceof IdeaNotSchedulableError
+          ? err.message
+          : "Couldn't schedule that one. Try again.",
+      );
+      if (err instanceof IdeaNotSchedulableError) setScheduling(null);
     } finally {
       setSaving(false);
     }

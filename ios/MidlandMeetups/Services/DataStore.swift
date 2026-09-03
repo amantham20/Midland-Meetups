@@ -426,9 +426,65 @@ final class DataStore {
 
         try await eraseAuthoredEvents(client: client, userId: userId)
         try await eraseAuthoredMemories(client: client, userId: userId)
+        try await eraseBoardRows(client: client, userId: userId)
 
         myEvents = []
         myEventsUserId = nil
+    }
+
+    /// Ideas, interest votes, group goals and logged entries.
+    ///
+    /// Nothing on either board is public, but every row carries the member's
+    /// name and is visible to every other signed-in account — and once the Auth
+    /// user is gone there is no way back in to remove them, so they go with the
+    /// account. The boards themselves are web-only for now; the rows outlive
+    /// that, which is exactly why this has to cover them.
+    private func eraseBoardRows(client: FirestoreClient, userId: String) async throws {
+        // Your own rows on other people's ideas and goals go first — they carry
+        // your name, and deleting them needs nothing but your own uid.
+        let votes = try await client.run(
+            FirestoreQuery("ideaVotes").whereEqualTo("userId", .string(userId))
+        )
+        for document in votes {
+            try await client.delete("ideaVotes", document.id)
+        }
+
+        let entries = try await client.run(
+            FirestoreQuery("goalLogs").whereEqualTo("userId", .string(userId))
+        )
+        for document in entries {
+            try await client.delete("goalLogs", document.id)
+        }
+
+        // Then what you started, each with whatever other people left on it.
+        // The child rows have to go first: the rule that lets an author clear
+        // someone else's vote or entry reads the parent, so the parent has to
+        // still be there when it runs.
+        let ideas = try await client.run(
+            FirestoreQuery("ideas").whereEqualTo("createdBy", .string(userId))
+        )
+        for idea in ideas {
+            let remaining = try await client.run(
+                FirestoreQuery("ideaVotes").whereEqualTo("ideaId", .string(idea.id))
+            )
+            for vote in remaining {
+                try await client.delete("ideaVotes", vote.id)
+            }
+            try await client.delete("ideas", idea.id)
+        }
+
+        let goals = try await client.run(
+            FirestoreQuery("goals").whereEqualTo("createdBy", .string(userId))
+        )
+        for goal in goals {
+            let logged = try await client.run(
+                FirestoreQuery("goalLogs").whereEqualTo("goalId", .string(goal.id))
+            )
+            for entry in logged {
+                try await client.delete("goalLogs", entry.id)
+            }
+            try await client.delete("goals", goal.id)
+        }
     }
 
     /// Submitted and hosted events, deduplicated the way `loadMyEvents` does it.

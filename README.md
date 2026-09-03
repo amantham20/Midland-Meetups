@@ -376,9 +376,10 @@ pull-to-refresh.
   matched by email, so admin editing works regardless.
 - **No idea board or group goals.** `/ideas` and `/goals` haven't been ported;
   the rules and data model are shared, so an iOS build can pick them up later.
-  Account deletion in the app doesn't clear a member's ideas, interest votes,
-  goals or logged entries yet — the rules already allow it, the Swift
-  `DataStore` cleanup just doesn't cover those collections.
+  Account deletion *does* clear a member's board rows even though the app can't
+  show them — their ideas, interest votes, goals and logged entries carry their
+  name to every signed-in member, and once the Auth user is gone nobody can go
+  back in and remove them.
 
 ---
 
