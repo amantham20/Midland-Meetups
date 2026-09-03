@@ -11,6 +11,20 @@ import { signOut } from "@/lib/firebase/auth";
 const NAV = [
   { href: "/", label: "Happenings", match: (p: string) => p === "/" },
   { href: "/rsvps", label: "RSVPs", match: (p: string) => p.startsWith("/rsvps") },
+  // The two member boards. Nothing on either is public, so a signed-out
+  // visitor is only offered links they could actually open.
+  {
+    href: "/ideas",
+    label: "Ideas",
+    match: (p: string) => p.startsWith("/ideas"),
+    memberOnly: true,
+  },
+  {
+    href: "/goals",
+    label: "Goals",
+    match: (p: string) => p.startsWith("/goals"),
+    memberOnly: true,
+  },
   {
     href: "/lore",
     label: "The Lore Letter",
@@ -101,7 +115,7 @@ export function Header() {
 
   const links = (
     <>
-      {NAV.map((item) => {
+      {NAV.filter((item) => !item.memberOnly || user).map((item) => {
         const active = item.match(pathname);
         const className = linkClass(active, item.cta);
         if (item.external) {
@@ -161,7 +175,7 @@ export function Header() {
         {/* Desktop nav */}
         <nav
           aria-label="Primary"
-          className="hidden items-center gap-1 md:flex"
+          className="hidden items-center gap-1 lg:flex"
         >
           {links}
         </nav>
@@ -169,7 +183,7 @@ export function Header() {
         {/* Mobile hamburger — high z-index + touch-manipulation so taps always hit */}
         <button
           type="button"
-          className="relative z-[60] -mr-1 flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-sm border-[1.5px] border-border bg-surface text-ink md:hidden"
+          className="relative z-[60] -mr-1 flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-sm border-[1.5px] border-border bg-surface text-ink lg:hidden"
           aria-expanded={open}
           aria-controls={navId}
           aria-label={open ? "Close navigation menu" : "Open navigation menu"}
@@ -207,14 +221,14 @@ export function Header() {
           {/* Scrim: tap outside to close */}
           <button
             type="button"
-            className="fixed inset-0 z-40 bg-ink/25 md:hidden"
+            className="fixed inset-0 z-40 bg-ink/25 lg:hidden"
             aria-label="Close menu"
             onClick={() => setOpen(false)}
           />
           <nav
             id={navId}
             aria-label="Primary"
-            className="relative z-50 border-t border-border bg-surface px-4 py-3 shadow-md md:hidden"
+            className="relative z-50 border-t border-border bg-surface px-4 py-3 shadow-md lg:hidden"
           >
             <div className="mx-auto flex max-w-[1180px] flex-col gap-1">
               {links}

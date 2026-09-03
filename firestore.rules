@@ -133,6 +133,117 @@ service cloud.firestore {
         || (signedIn() && resource.data.userId == request.auth.uid);
     }
 
+    // ——— The member boards ———
+    //
+    // Ideas and group goals are signed-in only, both to read and to write.
+    // Nothing on them is public, so they skip the approval queue that gates the
+    // public collections: what keeps them clean is that every row carries an
+    // account, authors can edit and delete their own, admins can delete
+    // anything, and both boards are reportable.
+
+    match /ideas/{ideaId} {
+      function isIdeaAuthor() {
+        return signedIn() && resource.data.createdBy == request.auth.uid;
+      }
+
+      // What the author may change. `createdBy` and `createdAt` are absent, so
+      // an idea can't be handed to another account.
+      function authorEditableKeysOnly() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'pitch', 'timeframe', 'status', 'eventId', 'updatedAt'
+        ]);
+      }
+
+      // Anybody may put a date on an open idea — that files an event submission
+      // of their own and marks the idea scheduled. It's the one transition a
+      // non-author gets, and it can't touch the pitch or unpark anything.
+      function schedulingOnly() {
+        return signedIn()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'eventId', 'updatedAt'
+          ])
+          && resource.data.status == 'open'
+          && request.resource.data.status == 'planned';
+      }
+
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'open'
+        && request.resource.data.eventId == ''
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 140
+        && request.resource.data.pitch is string
+        && request.resource.data.pitch.size() <= 2000;
+      allow update: if isAdmin()
+        || (isIdeaAuthor() && authorEditableKeysOnly())
+        || schedulingOnly();
+      allow delete: if isAdmin() || isIdeaAuthor();
+    }
+
+    // "I'd go" — one per member per idea, id-pinned like an RSVP.
+    match /ideaVotes/{voteId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && voteId == request.auth.uid + '_' + request.resource.data.ideaId;
+      // Your own vote, an organizer's call, or the author clearing the board
+      // when they delete the idea itself.
+      allow delete: if signedIn()
+        && (resource.data.userId == request.auth.uid
+          || isAdmin()
+          || get(/databases/$(database)/documents/ideas/$(resource.data.ideaId))
+              .data.createdBy == request.auth.uid);
+    }
+
+    match /goals/{goalId} {
+      function isGoalOwner() {
+        return signedIn() && resource.data.createdBy == request.auth.uid;
+      }
+
+      function ownerEditableKeysOnly() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'description', 'unit', 'target', 'deadline', 'status',
+          'updatedAt'
+        ]);
+      }
+
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'active'
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 140
+        && request.resource.data.description is string
+        && request.resource.data.description.size() <= 2000
+        && request.resource.data.target is number
+        && request.resource.data.target > 0;
+      allow update: if isAdmin() || (isGoalOwner() && ownerEditableKeysOnly());
+      allow delete: if isAdmin() || isGoalOwner();
+    }
+
+    // Contributions toward a goal. Everyone's add up to the total, so a member
+    // may only ever write their own — and take their own back.
+    match /goalLogs/{logId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.goalId is string
+        && request.resource.data.amount is number
+        && request.resource.data.amount > 0
+        && request.resource.data.note is string
+        && request.resource.data.note.size() <= 280;
+      // Entries aren't edited — a wrong one is removed and logged again.
+      allow update: if false;
+      allow delete: if signedIn()
+        && (resource.data.userId == request.auth.uid
+          || isAdmin()
+          || get(/databases/$(database)/documents/goals/$(resource.data.goalId))
+              .data.createdBy == request.auth.uid);
+    }
+
     match /rsvps/{rsvpId} {
       allow read: if true;
       allow create, update: if signedIn()
@@ -169,7 +280,9 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.reportedBy == request.auth.uid
         && request.resource.data.status == 'open'
-        && request.resource.data.targetType in ['event', 'memory', 'member', 'other']
+        && request.resource.data.targetType in [
+          'event', 'memory', 'member', 'idea', 'goal', 'other'
+        ]
         && request.resource.data.targetId is string
         && request.resource.data.targetLabel is string
         && request.resource.data.reason is string
