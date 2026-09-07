@@ -4,12 +4,13 @@ import { useMemo, useState } from "react";
 import { Modal } from "@/components/Modal";
 import { SquadPhoto } from "@/components/SquadPhoto";
 import {
+  AlertIcon,
   MailIcon,
   PencilIcon,
   SearchIcon,
   UsersIcon,
 } from "@/components/Icons";
-import { groupsForEmail } from "@/lib/audience";
+import { groupsForEmail, normalizeEmail } from "@/lib/audience";
 import type { AudienceGroup, SquadMember } from "@/lib/types";
 import { EmptyState, FilterChips, SectionHeading, Toggle } from "./ui";
 
@@ -81,7 +82,56 @@ export function SquadPanel({
     });
   }, [squad, query, filter]);
 
+  /**
+   * Every email the admin could put on a profile: the ones already on a squad
+   * profile plus everything that turns up in an audience group. `owner` is the
+   * profile using it today, so the editor can refuse to hand the same email to
+   * two people.
+   */
+  const emailChoices = useMemo(() => {
+    const owner = new Map<string, SquadMember>();
+    for (const m of squad) {
+      const e = normalizeEmail(m.email);
+      if (e && !owner.has(e)) owner.set(e, m);
+    }
+    const all = new Set<string>(owner.keys());
+    for (const g of groups) {
+      for (const e of g.emails) {
+        const n = normalizeEmail(e);
+        if (n) all.add(n);
+      }
+    }
+    return Array.from(all)
+      .sort()
+      .map((email) => ({ email, owner: owner.get(email) ?? null }));
+  }, [squad, groups]);
+
+  /** The same list from the open profile's point of view — its own email is free. */
+  const editingChoices = useMemo(
+    () =>
+      emailChoices.map(({ email, owner }) => ({
+        email,
+        takenBy:
+          owner && owner.id !== editingId ? owner.name || "Unnamed" : null,
+      })),
+    [emailChoices, editingId],
+  );
+
   const editing = editingId ? squad.find((m) => m.id === editingId) : null;
+
+  /**
+   * Name of the profile already holding the drafted email, or null when it's
+   * free. Email is looked up as a key (`findEditableSquadProfile` takes the
+   * first document matching it), so a duplicate would hand a signed-in user
+   * somebody else's profile. Only a *new* duplicate is blocked — an address a
+   * profile already carries shouldn't stop an admin editing the rest of it.
+   */
+  const emailConflict = useMemo(() => {
+    if (!editing || !draft) return null;
+    const next = normalizeEmail(draft.email);
+    if (!next || next === normalizeEmail(editing.email)) return null;
+    return editingChoices.find((c) => c.email === next)?.takenBy ?? null;
+  }, [editing, draft, editingChoices]);
 
   function startEdit(m: SquadMember) {
     setEditingId(m.id);
@@ -98,7 +148,7 @@ export function SquadPanel({
   }
 
   async function submit() {
-    if (!editingId || !draft) return;
+    if (!editingId || !draft || emailConflict) return;
     setSaving(true);
     try {
       await onSave(editingId, draft);
@@ -252,7 +302,7 @@ export function SquadPanel({
               type="button"
               className="btn btn-primary"
               onClick={() => void submit()}
-              disabled={saving}
+              disabled={saving || Boolean(emailConflict)}
             >
               {saving ? "Saving…" : "Save changes"}
             </button>
@@ -297,13 +347,12 @@ export function SquadPanel({
                   Email{" "}
                   <span className="field-hint">— links sign-in & groups</span>
                 </label>
-                <input
-                  id="edit-email"
-                  className="field"
-                  type="email"
+                <EmailField
+                  key={editing.id}
                   value={draft.email}
-                  onChange={(e) => patch({ email: e.target.value })}
-                  placeholder="name@example.com"
+                  onChange={(email) => patch({ email })}
+                  choices={editingChoices}
+                  conflict={emailConflict}
                 />
               </div>
               <div>
@@ -380,5 +429,96 @@ export function SquadPanel({
         )}
       </Modal>
     </section>
+  );
+}
+
+/** Select value that means "none of the known emails — let me type one". */
+const CUSTOM_EMAIL = "__custom__";
+
+/**
+ * Email picker for a squad profile: pick one of the emails the app already
+ * knows about, or drop into a text box for a brand new one. Emails sitting on
+ * another profile are listed but not selectable — email is what links a profile
+ * to a sign-in, so two profiles must never share one.
+ */
+function EmailField({
+  value,
+  onChange,
+  choices,
+  conflict,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  /** Sorted known emails; `takenBy` names the profile already using it. */
+  choices: { email: string; takenBy: string | null }[];
+  /** Profile already holding this address — set only when it's someone else's. */
+  conflict: string | null;
+}) {
+  const [custom, setCustom] = useState(false);
+
+  const free = choices.filter((c) => !c.takenBy);
+  const taken = choices.filter((c) => c.takenBy);
+  const current = normalizeEmail(value);
+  // An email that isn't on the list (a fresh one being typed, or one only this
+  // profile has) has no option to sit on — show the text box instead.
+  const typing =
+    custom || (Boolean(current) && !free.some((c) => c.email === current));
+
+  return (
+    <>
+      <select
+        id="edit-email"
+        className="field"
+        value={typing ? CUSTOM_EMAIL : current}
+        onChange={(e) => {
+          const next = e.target.value;
+          if (next === CUSTOM_EMAIL) {
+            setCustom(true);
+            return;
+          }
+          setCustom(false);
+          onChange(next);
+        }}
+      >
+        <option value="">No email</option>
+        {free.length > 0 && (
+          <optgroup label="Known emails">
+            {free.map((c) => (
+              <option key={c.email} value={c.email}>
+                {c.email}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        {taken.length > 0 && (
+          <optgroup label="Already on another profile">
+            {taken.map((c) => (
+              <option key={c.email} value={c.email} disabled>
+                {c.email} — {c.takenBy}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        <option value={CUSTOM_EMAIL}>Type a different email…</option>
+      </select>
+      {typing && (
+        <input
+          className="field mt-2"
+          type="email"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="name@example.com"
+          aria-label="Email address"
+          aria-invalid={Boolean(conflict)}
+        />
+      )}
+      {conflict && (
+        <p className="mt-1.5 flex items-start gap-1.5 text-xs font-semibold text-red-ink">
+          <AlertIcon className="mt-px h-3.5 w-3.5 shrink-0" />
+          Already on {conflict}&apos;s profile — clear it there first, or one
+          sign-in would land on the wrong profile.
+        </p>
+      )}
+    </>
   );
 }
