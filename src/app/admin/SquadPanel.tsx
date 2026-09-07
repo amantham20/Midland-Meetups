@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Modal } from "@/components/Modal";
 import { SquadPhoto } from "@/components/SquadPhoto";
 import {
+  AlertIcon,
   MailIcon,
   PencilIcon,
   SearchIcon,
@@ -118,6 +119,20 @@ export function SquadPanel({
 
   const editing = editingId ? squad.find((m) => m.id === editingId) : null;
 
+  /**
+   * Name of the profile already holding the drafted email, or null when it's
+   * free. Email is looked up as a key (`findEditableSquadProfile` takes the
+   * first document matching it), so a duplicate would hand a signed-in user
+   * somebody else's profile. Only a *new* duplicate is blocked — an address a
+   * profile already carries shouldn't stop an admin editing the rest of it.
+   */
+  const emailConflict = useMemo(() => {
+    if (!editing || !draft) return null;
+    const next = normalizeEmail(draft.email);
+    if (!next || next === normalizeEmail(editing.email)) return null;
+    return editingChoices.find((c) => c.email === next)?.takenBy ?? null;
+  }, [editing, draft, editingChoices]);
+
   function startEdit(m: SquadMember) {
     setEditingId(m.id);
     setDraft(draftFromMember(m));
@@ -133,7 +148,7 @@ export function SquadPanel({
   }
 
   async function submit() {
-    if (!editingId || !draft) return;
+    if (!editingId || !draft || emailConflict) return;
     setSaving(true);
     try {
       await onSave(editingId, draft);
@@ -287,7 +302,7 @@ export function SquadPanel({
               type="button"
               className="btn btn-primary"
               onClick={() => void submit()}
-              disabled={saving}
+              disabled={saving || Boolean(emailConflict)}
             >
               {saving ? "Saving…" : "Save changes"}
             </button>
@@ -337,6 +352,7 @@ export function SquadPanel({
                   value={draft.email}
                   onChange={(email) => patch({ email })}
                   choices={editingChoices}
+                  conflict={emailConflict}
                 />
               </div>
               <div>
@@ -429,11 +445,14 @@ function EmailField({
   value,
   onChange,
   choices,
+  conflict,
 }: {
   value: string;
   onChange: (next: string) => void;
   /** Sorted known emails; `takenBy` names the profile already using it. */
   choices: { email: string; takenBy: string | null }[];
+  /** Profile already holding this address — set only when it's someone else's. */
+  conflict: string | null;
 }) {
   const [custom, setCustom] = useState(false);
 
@@ -490,7 +509,15 @@ function EmailField({
           onChange={(e) => onChange(e.target.value)}
           placeholder="name@example.com"
           aria-label="Email address"
+          aria-invalid={Boolean(conflict)}
         />
+      )}
+      {conflict && (
+        <p className="mt-1.5 flex items-start gap-1.5 text-xs font-semibold text-red-ink">
+          <AlertIcon className="mt-px h-3.5 w-3.5 shrink-0" />
+          Already on {conflict}&apos;s profile — clear it there first, or one
+          sign-in would land on the wrong profile.
+        </p>
       )}
     </>
   );
